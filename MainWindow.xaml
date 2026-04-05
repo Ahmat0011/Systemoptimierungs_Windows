@@ -1,11 +1,139 @@
 <Window x:Class="SystemOptimierer.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="System Optimierer &amp; Updater PRO" Height="900" Width="850" MinHeight="750" MinWidth="800"
-        Background="#0E0E10" FontFamily="Segoe UI" Icon="icon.ico" WindowStartupLocation="CenterScreen">
-    
+        Title="System Optimierer &amp; Updater PRO" Height="900" Width="1050" MinHeight="750" MinWidth="900"
+        Background="#121212" FontFamily="Segoe UI" Icon="icon.ico" WindowStartupLocation="CenterScreen">
+
     <Window.Resources>
-        <!-- Modern ScrollBar Style (Simplified for Dark Theme) -->
+
+        <!-- ===================== BUTTONS ===================== -->
+        <Style TargetType="Button" x:Key="ModernButtonStyle">
+            <Setter Property="Background"       Value="#1A1C23"/>
+            <Setter Property="Foreground"       Value="#E2E2E2"/>
+            <Setter Property="FontWeight"       Value="SemiBold"/>
+            <Setter Property="FontSize"         Value="13"/>
+            <Setter Property="Padding"          Value="18,9"/>
+            <Setter Property="Margin"           Value="0,0,10,0"/>
+            <Setter Property="BorderThickness"  Value="1"/>
+            <Setter Property="BorderBrush"      Value="#2A2D35"/>
+            <Setter Property="Cursor"           Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border" Background="{TemplateBinding Background}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                BorderBrush="{TemplateBinding BorderBrush}" CornerRadius="6">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              Margin="{TemplateBinding Padding}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background"   Value="#2D72D9"/>
+                                <Setter TargetName="border" Property="BorderBrush"  Value="#3D82E9"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Background"  Value="#1E5BB5"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="border" Property="Background"  Value="#1A1A1A"/>
+                                <Setter TargetName="border" Property="BorderBrush" Value="#1A1A1A"/>
+                                <Setter Property="Foreground" Value="#444"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="Button" x:Key="DangerButtonStyle" BasedOn="{StaticResource ModernButtonStyle}">
+            <Setter Property="Foreground"  Value="#FF6B6B"/>
+            <Setter Property="BorderBrush" Value="#4A1C1C"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background"  Value="#C62828"/>
+                    <Setter Property="BorderBrush" Value="#E53935"/>
+                    <Setter Property="Foreground"  Value="White"/>
+                </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                    <Setter Property="Background" Value="#B71C1C"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- ===================== NAV ITEMS ===================== -->
+        <Style TargetType="RadioButton" x:Key="NavItemStyle">
+            <Setter Property="Background"      Value="Transparent"/>
+            <Setter Property="Foreground"      Value="#9EA3B0"/>
+            <Setter Property="FontSize"        Value="13"/>
+            <Setter Property="FontWeight"      Value="Medium"/>
+            <Setter Property="Padding"         Value="14,12"/>
+            <Setter Property="Margin"          Value="0,2,0,2"/>
+            <Setter Property="Cursor"          Value="Hand"/>
+            <Setter Property="GroupName"       Value="NavGroup"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="bg" Background="Transparent" CornerRadius="8" Padding="{TemplateBinding Padding}">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock x:Name="icon" Text="{TemplateBinding Tag}" FontSize="16"
+                                           VerticalAlignment="Center" Margin="0,0,10,0"
+                                           Foreground="{TemplateBinding Foreground}"/>
+                                <ContentPresenter VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bg" Property="Background" Value="#1E2028"/>
+                                <Setter Property="Foreground" Value="#C8CBCF"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="bg" Property="Background" Value="#1A2A4A"/>
+                                <Setter Property="Foreground" Value="#4D9EFF"/>
+                                <Setter Property="FontWeight" Value="SemiBold"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ===================== CARDS ===================== -->
+        <Style TargetType="Border" x:Key="CardStyle">
+            <Setter Property="Background"      Value="#1A1C23"/>
+            <Setter Property="BorderBrush"     Value="#22252D"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius"    Value="10"/>
+            <Setter Property="Padding"         Value="22,18"/>
+            <Setter Property="Margin"          Value="0,0,0,14"/>
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <DropShadowEffect Color="Black" BlurRadius="12" Opacity="0.25" ShadowDepth="2"/>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ===================== TYPOGRAPHY ===================== -->
+        <Style TargetType="TextBlock" x:Key="CardTitle">
+            <Setter Property="Foreground"  Value="White"/>
+            <Setter Property="FontSize"    Value="15"/>
+            <Setter Property="FontWeight"  Value="SemiBold"/>
+            <Setter Property="Margin"      Value="0,0,0,5"/>
+        </Style>
+        <Style TargetType="TextBlock" x:Key="CardDesc">
+            <Setter Property="Foreground"    Value="#808590"/>
+            <Setter Property="FontSize"      Value="12"/>
+            <Setter Property="Margin"        Value="0,0,0,14"/>
+            <Setter Property="TextWrapping"  Value="Wrap"/>
+        </Style>
+        <Style TargetType="TextBlock" x:Key="SectionHeader">
+            <Setter Property="Foreground"  Value="#4D9EFF"/>
+            <Setter Property="FontSize"    Value="10"/>
+            <Setter Property="FontWeight"  Value="Bold"/>
+            <Setter Property="Margin"      Value="0,0,0,10"/>
+        </Style>
+
+        <!-- ===================== SCROLLBAR ===================== -->
         <Style TargetType="ScrollViewer">
             <Setter Property="Template">
                 <Setter.Value>
@@ -15,188 +143,225 @@
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <ScrollContentPresenter Grid.Column="0" />
-                            <ScrollBar x:Name="PART_VerticalScrollBar" Grid.Column="1" Value="{TemplateBinding VerticalOffset}" Maximum="{TemplateBinding ScrollableHeight}" ViewportSize="{TemplateBinding ViewportHeight}" Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}"/>
+                            <ScrollContentPresenter Grid.Column="0"/>
+                            <ScrollBar x:Name="PART_VerticalScrollBar" Grid.Column="1"
+                                       Value="{TemplateBinding VerticalOffset}"
+                                       Maximum="{TemplateBinding ScrollableHeight}"
+                                       ViewportSize="{TemplateBinding ViewportHeight}"
+                                       Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}"/>
                         </Grid>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
         </Style>
-
-        <!-- Premium Button Style mit Hover-Animationen -->
-        <Style TargetType="Button" x:Key="ModernButtonStyle">
-            <Setter Property="Background" Value="#1A1C23"/>
-            <Setter Property="Foreground" Value="#E2E2E2"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="FontSize" Value="14"/>
-            <Setter Property="Padding" Value="15,8"/>
-            <Setter Property="Margin" Value="0,0,10,0"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="BorderBrush" Value="#2A2D35"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="border" Background="{TemplateBinding Background}" BorderThickness="{TemplateBinding BorderThickness}" BorderBrush="{TemplateBinding BorderBrush}" CornerRadius="6">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="border" Property="Background" Value="#2D72D9"/>
-                                <Setter TargetName="border" Property="BorderBrush" Value="#3D82E9"/>
-                                <Setter Property="Foreground" Value="White"/>
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="border" Property="Background" Value="#1E5BB5"/>
-                                <Setter Property="Foreground" Value="#E0E0E0"/>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="border" Property="Background" Value="#222222"/>
-                                <Setter TargetName="border" Property="BorderBrush" Value="#1A1A1A"/>
-                                <Setter Property="Foreground" Value="#555555"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <Style TargetType="Button" x:Key="DangerButtonStyle" BasedOn="{StaticResource ModernButtonStyle}">
-            <Setter Property="Foreground" Value="#FF5252"/>
-            <Setter Property="BorderBrush" Value="#4A1C1C"/>
-            <Style.Triggers>
-                <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="#D32F2F"/>
-                    <Setter Property="BorderBrush" Value="#E53935"/>
-                    <Setter Property="Foreground" Value="White"/>
-                </Trigger>
-                <Trigger Property="IsPressed" Value="True">
-                    <Setter Property="Background" Value="#B71C1C"/>
-                </Trigger>
-            </Style.Triggers>
-        </Style>
-
-        <!-- Modern Card Style -->
-        <Style TargetType="Border" x:Key="CardStyle">
-            <Setter Property="Background" Value="#13151A"/>
-            <Setter Property="BorderBrush" Value="#22252D"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="8"/>
-            <Setter Property="Padding" Value="20"/>
-            <Setter Property="Margin" Value="0,0,0,16"/>
-            <!-- Subtle DropShadow for depth -->
-            <Setter Property="Effect">
-                <Setter.Value>
-                    <DropShadowEffect Color="Black" BlurRadius="10" Opacity="0.3" ShadowDepth="3"/>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <!-- Typography -->
-        <Style TargetType="TextBlock" x:Key="CardTitle">
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="FontSize" Value="16"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Margin" Value="0,0,0,6"/>
-        </Style>
-        <Style TargetType="TextBlock" x:Key="CardDesc">
-            <Setter Property="Foreground" Value="#9EA3B0"/>
-            <Setter Property="FontSize" Value="13"/>
-            <Setter Property="Margin" Value="0,0,0,15"/>
-            <Setter Property="TextWrapping" Value="Wrap"/>
-        </Style>
     </Window.Resources>
 
-    <Grid Margin="25">
+    <!-- ===================== ROOT LAYOUT ===================== -->
+    <Grid>
         <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="6*"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="4*"/>
+            <RowDefinition Height="220"/>
         </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="220"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
 
-        <!-- Header -->
-        <TextBlock Grid.Row="0" Text="System Control Center" FontSize="28" FontWeight="Light" Margin="0,0,0,5" Foreground="White" HorizontalAlignment="Left" />
-        <TextBlock Grid.Row="1" Text="Professionelles Optimierungs-Tuning &amp; Wartungstool" FontSize="14" Foreground="#2D72D9" Margin="0,0,0,20"/>
+        <!-- ===== SIDEBAR ===== -->
+        <Border Grid.Row="0" Grid.RowSpan="3" Grid.Column="0"
+                Background="#0E0F13" BorderBrush="#1E2028" BorderThickness="0,0,1,0">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
 
-        <!-- Main Content -->
-        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Margin="0,0,0,15" Padding="0,0,15,0">
-            <StackPanel>
-                
-                <!-- 1. Software Updates -->
-                <Border Style="{StaticResource CardStyle}">
-                    <StackPanel>
-                        <TextBlock Text="1. Software Updates (Stabil)" Style="{StaticResource CardTitle}"/>
-                        <TextBlock Text="Sucht nach offiziellen Updates diverser Software-Pakete über Winget und installiert diese vollautomatisiert im Hintergrund." Style="{StaticResource CardDesc}"/>
-                        <StackPanel Orientation="Horizontal">
-                            <Button Content="Updates suchen" Command="{Binding CheckUpdatesCommand}" Style="{StaticResource ModernButtonStyle}" Width="160"/>
-                            <Button Content="Updates installieren" Command="{Binding InstallUpdatesCommand}" Style="{StaticResource ModernButtonStyle}" Width="160"/>
+                <!-- Logo / Titel -->
+                <StackPanel Grid.Row="0" Margin="20,28,20,28">
+                    <TextBlock Text="⚡ SystemOptimizer" Foreground="White" FontSize="15"
+                               FontWeight="Bold" TextWrapping="Wrap"/>
+                    <TextBlock Text="PRO Edition" Foreground="#4D9EFF" FontSize="11" Margin="0,3,0,0"/>
+                </StackPanel>
+
+                <!-- Nav Items -->
+                <StackPanel Grid.Row="1" Margin="10,0,10,0">
+                    <TextBlock Text="HAUPTMENÜ" Style="{StaticResource SectionHeader}" Margin="14,0,0,8"/>
+
+                    <RadioButton IsChecked="True" Style="{StaticResource NavItemStyle}"
+                                 Tag="🔄" Content="Update Center"
+                                 x:Name="NavUpdates"/>
+                    <RadioButton Style="{StaticResource NavItemStyle}"
+                                 Tag="🛠️" Content="System-Reparatur"
+                                 x:Name="NavRepair"/>
+                    <RadioButton Style="{StaticResource NavItemStyle}"
+                                 Tag="🧹" Content="Bereinigung &amp; Optimierung"
+                                 x:Name="NavCleanup"/>
+                    <RadioButton Style="{StaticResource NavItemStyle}"
+                                 Tag="🔁" Content="Abschluss"
+                                 x:Name="NavRestart"/>
+                </StackPanel>
+
+                <!-- Version Info -->
+                <StackPanel Grid.Row="2" Margin="20,0,20,20">
+                    <Separator Background="#1E2028" Margin="0,0,0,12"/>
+                    <TextBlock Text="v2.0 · .NET 10 · WPF" Foreground="#3A3D45" FontSize="10"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ===== MAIN CONTENT (Tab Pages) ===== -->
+        <Grid Grid.Row="0" Grid.Column="1" Margin="30,25,30,15">
+
+            <!-- Tab 1: Update Center -->
+            <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,10,0">
+                <ScrollViewer.Style>
+                    <Style TargetType="ScrollViewer">
+                        <Setter Property="Visibility" Value="Collapsed"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsChecked, ElementName=NavUpdates}" Value="True">
+                                <Setter Property="Visibility" Value="Visible"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </ScrollViewer.Style>
+                <StackPanel>
+                    <TextBlock Text="Update Center" Foreground="White" FontSize="22" FontWeight="Light" Margin="0,0,0,4"/>
+                    <TextBlock Text="Software- und Treiber-Updates — Deep-Scan über alle Scopes" Foreground="#4D9EFF" FontSize="12" Margin="0,0,0,22"/>
+
+                    <!-- Software Updates -->
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="Software Updates (Stabil)" Style="{StaticResource CardTitle}"/>
+                            <TextBlock Style="{StaticResource CardDesc}"
+                                       Text="Deep-Scan über Machine-Scope, User-Scope und MS Store. Findet alle offiziellen stabilen Updates – keine Alpha/Beta-Versionen."/>
+                            <StackPanel Orientation="Horizontal">
+                                <Button Content="🔍  Updates suchen"    Command="{Binding CheckUpdatesCommand}"   Style="{StaticResource ModernButtonStyle}" Width="170"/>
+                                <Button Content="⬇  Updates installieren" Command="{Binding InstallUpdatesCommand}" Style="{StaticResource ModernButtonStyle}" Width="185"/>
+                            </StackPanel>
                         </StackPanel>
-                    </StackPanel>
-                </Border>
+                    </Border>
 
-                <!-- 2. Windows Reparatur -->
-                <Border Style="{StaticResource CardStyle}">
-                    <StackPanel>
-                        <TextBlock Text="2. Windows Kernrepapratur" Style="{StaticResource CardTitle}"/>
-                        <TextBlock Text="Prüft und repariert tiefgreifende Beschädigungen im Windows Component Store (DISM) und den Systemdateien (SFC)." Style="{StaticResource CardDesc}"/>
-                        <Button Content="System tiefenprüfen" Command="{Binding RepairSystemCommand}" Style="{StaticResource ModernButtonStyle}" Width="180" HorizontalAlignment="Left"/>
-                    </StackPanel>
-                </Border>
-
-                <!-- 3. Netzwerk Optimierung -->
-                <Border Style="{StaticResource CardStyle}">
-                    <StackPanel>
-                        <TextBlock Text="3. Netzwerk &amp; Latenz Optimieren" Style="{StaticResource CardTitle}"/>
-                        <TextBlock Text="Deaktiviert bandbreitenfressende P2P-Windows-Updates an andere PCs, um Ping zu reduzieren." Style="{StaticResource CardDesc}"/>
-                        <Button Content="P2P-Downloads stoppen" Command="{Binding OptimizeNetworkCommand}" Style="{StaticResource ModernButtonStyle}" Width="200" HorizontalAlignment="Left"/>
-                    </StackPanel>
-                </Border>
-
-                <!-- 4. Datenmüll / Cache -->
-                <Border Style="{StaticResource CardStyle}">
-                    <StackPanel>
-                        <TextBlock Text="4. Master-Bereinigung" Style="{StaticResource CardTitle}"/>
-                        <TextBlock Text="Löscht Temp-Dateien, leert den Papierkorb (voll), löscht DirectX-Shadercaches, Thumbnail-Caches und alte Windows-Update Überbleibsel." Style="{StaticResource CardDesc}"/>
-                        <Button Content="System reinigen" Command="{Binding CleanupSystemCommand}" Style="{StaticResource ModernButtonStyle}" Width="160" HorizontalAlignment="Left"/>
-                    </StackPanel>
-                </Border>
-
-                <!-- 6. Hardware Treiber -->
-                <Border Style="{StaticResource CardStyle}">
-                    <StackPanel>
-                        <TextBlock Text="5. Hardware Treiber Updates (Microsoft)" Style="{StaticResource CardTitle}"/>
-                        <TextBlock Text="Fragt die offizielle Microsoft-COM-API nach WHQL-zertifizierten Hardware-Treibern für dein Mainboard und deine Peripherie." Style="{StaticResource CardDesc}"/>
-                        <StackPanel Orientation="Horizontal">
-                            <Button Content="Treiber suchen" Command="{Binding CheckDriversCommand}" Style="{StaticResource ModernButtonStyle}" Width="160"/>
-                            <Button Content="Treiber installieren" Command="{Binding InstallDriversCommand}" Style="{StaticResource ModernButtonStyle}" Width="160"/>
+                    <!-- Treiber Updates -->
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="Hardware Treiber Updates (Microsoft)" Style="{StaticResource CardTitle}"/>
+                            <TextBlock Style="{StaticResource CardDesc}"
+                                       Text="Deep-Scan über die offizielle Microsoft Update COM-API. Findet WHQL-zertifizierte Pflicht-Treiber UND optionale Hardware-Updates (Intel, Nvidia, Realtek, AMD) die vom Standard-Scan oft ignoriert werden."/>
+                            <StackPanel Orientation="Horizontal">
+                                <Button Content="🔍  Treiber suchen"    Command="{Binding CheckDriversCommand}"   Style="{StaticResource ModernButtonStyle}" Width="160"/>
+                                <Button Content="⬇  Treiber installieren" Command="{Binding InstallDriversCommand}" Style="{StaticResource ModernButtonStyle}" Width="185"/>
+                            </StackPanel>
                         </StackPanel>
-                    </StackPanel>
-                </Border>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
 
-                <!-- 7. Abschluss -->
-                <Border Style="{StaticResource CardStyle}" BorderBrush="#3A1919" Background="#1D1212">
-                    <StackPanel>
-                        <TextBlock Text="6. System Neustart" Foreground="#FF6B6B" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                        <TextBlock Text="Schließt alle laufenden Reparaturen und Installationen final ab. Schließe vorher ungespeicherte Dokumente." Foreground="#B05C5C" FontSize="13" Margin="0,0,0,15" TextWrapping="Wrap"/>
-                        <Button Content="JETZT NEUSTARTEN" Command="{Binding RestartCommand}" Style="{StaticResource DangerButtonStyle}" Width="180" HorizontalAlignment="Left"/>
-                    </StackPanel>
-                </Border>
-            </StackPanel>
-        </ScrollViewer>
+            <!-- Tab 2: System-Reparatur -->
+            <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,10,0">
+                <ScrollViewer.Style>
+                    <Style TargetType="ScrollViewer">
+                        <Setter Property="Visibility" Value="Collapsed"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsChecked, ElementName=NavRepair}" Value="True">
+                                <Setter Property="Visibility" Value="Visible"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </ScrollViewer.Style>
+                <StackPanel>
+                    <TextBlock Text="System-Reparatur" Foreground="White" FontSize="22" FontWeight="Light" Margin="0,0,0,4"/>
+                    <TextBlock Text="Tiefgreifende Reparatur des Windows Component Store und der Systemdateien" Foreground="#4D9EFF" FontSize="12" Margin="0,0,0,22"/>
 
-        <!-- Status Panel mit Progress Bar -->
-        <Grid Grid.Row="3" Margin="0,0,0,15">
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="Windows Kernreparatur (DISM + SFC)" Style="{StaticResource CardTitle}"/>
+                            <TextBlock Style="{StaticResource CardDesc}"
+                                       Text="Führt zunächst DISM /RestoreHealth aus, um den Windows Component Store zu reparieren. Anschließend prüft SFC /scannow alle geschützten Systemdateien und stellt beschädigte Dateien wieder her."/>
+                            <Button Content="🛠️  System tiefenprüfen" Command="{Binding RepairSystemCommand}" Style="{StaticResource ModernButtonStyle}" Width="200" HorizontalAlignment="Left"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Tab 3: Bereinigung & Optimierung -->
+            <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,10,0">
+                <ScrollViewer.Style>
+                    <Style TargetType="ScrollViewer">
+                        <Setter Property="Visibility" Value="Collapsed"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsChecked, ElementName=NavCleanup}" Value="True">
+                                <Setter Property="Visibility" Value="Visible"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </ScrollViewer.Style>
+                <StackPanel>
+                    <TextBlock Text="Bereinigung &amp; Optimierung" Foreground="White" FontSize="22" FontWeight="Light" Margin="0,0,0,4"/>
+                    <TextBlock Text="Systemspeicher freigeben und Netzwerk-Overhead reduzieren" Foreground="#4D9EFF" FontSize="12" Margin="0,0,0,22"/>
+
+                    <!-- Master Cleanup -->
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="Master-Bereinigung" Style="{StaticResource CardTitle}"/>
+                            <TextBlock Style="{StaticResource CardDesc}"
+                                       Text="Löscht Temp-Dateien, leert den Papierkorb (alle Laufwerke), entfernt DirectX-Shadercaches und Thumbnail-Caches, säubert Prefetch sowie Windows Update Überbleibsel und flusht den DNS-Cache."/>
+                            <Button Content="🧹  System reinigen" Command="{Binding CleanupSystemCommand}" Style="{StaticResource ModernButtonStyle}" Width="175" HorizontalAlignment="Left"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- P2P Deaktivieren -->
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="Netzwerk &amp; Latenz Optimieren" Style="{StaticResource CardTitle}"/>
+                            <TextBlock Style="{StaticResource CardDesc}"
+                                       Text="Deaktiviert bandbreitenfressende P2P-Windows-Updates an andere PCs (Delivery Optimization), um Ping zu reduzieren und Netzwerkressourcen zu schonen."/>
+                            <Button Content="🌐  P2P-Downloads stoppen" Command="{Binding OptimizeNetworkCommand}" Style="{StaticResource ModernButtonStyle}" Width="210" HorizontalAlignment="Left"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Tab 4: Abschluss -->
+            <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,10,0">
+                <ScrollViewer.Style>
+                    <Style TargetType="ScrollViewer">
+                        <Setter Property="Visibility" Value="Collapsed"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsChecked, ElementName=NavRestart}" Value="True">
+                                <Setter Property="Visibility" Value="Visible"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </ScrollViewer.Style>
+                <StackPanel>
+                    <TextBlock Text="Abschluss" Foreground="White" FontSize="22" FontWeight="Light" Margin="0,0,0,4"/>
+                    <TextBlock Text="Alle Änderungen final übernehmen" Foreground="#4D9EFF" FontSize="12" Margin="0,0,0,22"/>
+
+                    <Border Style="{StaticResource CardStyle}" BorderBrush="#4A1C1C" Background="#1D1215">
+                        <StackPanel>
+                            <TextBlock Text="System Neustart" Foreground="#FF6B6B" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,5"/>
+                            <TextBlock Foreground="#905050" FontSize="12" Margin="0,0,0,14" TextWrapping="Wrap"
+                                       Text="Startet den PC neu, um alle installierten Updates und Reparaturen final zu aktivieren. Bitte speichere vorher alle offenen Dateien und Projekte."/>
+                            <Button Content="🔁  JETZT NEUSTARTEN" Command="{Binding RestartCommand}" Style="{StaticResource DangerButtonStyle}" Width="200" HorizontalAlignment="Left"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+
+        <!-- ===== STATUS BAR ===== -->
+        <Grid Grid.Row="1" Grid.Column="1" Margin="30,0,30,12">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
-            
+
             <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                <TextBlock Text="{Binding StatusMessage}" Foreground="#2D72D9" FontWeight="SemiBold" FontSize="14" Margin="0,0,0,5"/>
-                <!-- Indeterminate Bar, is visible when busy -->
-                <ProgressBar Height="4" IsIndeterminate="{Binding IsBusy}" BorderThickness="0" Background="#1A1C23" Foreground="#2D72D9">
+                <TextBlock Text="{Binding StatusMessage}" Foreground="#4D9EFF" FontWeight="SemiBold" FontSize="13" Margin="0,0,0,5"/>
+                <ProgressBar Height="3" IsIndeterminate="{Binding IsBusy}" BorderThickness="0"
+                             Background="#1A1C23" Foreground="#4D9EFF">
                     <ProgressBar.Style>
                         <Style TargetType="ProgressBar">
                             <Setter Property="Visibility" Value="Collapsed"/>
@@ -209,8 +374,9 @@
                     </ProgressBar.Style>
                 </ProgressBar>
             </StackPanel>
-            
-            <Button Grid.Column="1" Margin="15,0,0,0" VerticalAlignment="Center" Content="ABBRECHEN" Command="{Binding CancelCommand}" Width="120" Height="35">
+
+            <Button Grid.Column="1" Margin="15,0,0,0" VerticalAlignment="Center"
+                    Content="✕  ABBRECHEN" Command="{Binding CancelCommand}" Width="130" Height="34">
                 <Button.Style>
                     <Style TargetType="Button" BasedOn="{StaticResource DangerButtonStyle}">
                         <Setter Property="Visibility" Value="Collapsed"/>
@@ -224,18 +390,26 @@
             </Button>
         </Grid>
 
-        <!-- Live Hacker Console -->
-        <Border Grid.Row="4" Background="#0C0C0C" BorderBrush="#2D72D9" BorderThickness="1" CornerRadius="8">
+        <!-- ===== LIVE CONSOLE ===== -->
+        <Border Grid.Row="2" Grid.Column="1" Margin="30,0,30,20"
+                Background="#0C0C0C" BorderBrush="#2D72D9" BorderThickness="1" CornerRadius="8">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
-                <Border Grid.Row="0" Background="#151A22" CornerRadius="8,8,0,0" Padding="15,8">
-                    <TextBlock Text="LIVE EXECUTION CONSOLE // SYSTEM.OVERRIDE" Foreground="#2D72D9" FontSize="11" FontFamily="Consolas" FontWeight="Bold"/>
+                <Border Grid.Row="0" Background="#101820" CornerRadius="8,8,0,0" Padding="15,7">
+                    <TextBlock Text="▶  LIVE EXECUTION CONSOLE  //  SYSTEM.OVERRIDE"
+                               Foreground="#2D72D9" FontSize="10" FontFamily="Consolas" FontWeight="Bold"/>
                 </Border>
-                <TextBox x:Name="TxtLog" Grid.Row="1" Text="{Binding LogText, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" 
-                         Background="Transparent" Foreground="#4AF626" FontFamily="Consolas" FontSize="13" Margin="10,10,10,10" BorderThickness="0" TextChanged="TxtLog_TextChanged"/>
+                <TextBox x:Name="TxtLog" Grid.Row="1"
+                         Text="{Binding LogText, Mode=OneWay}"
+                         IsReadOnly="True" TextWrapping="Wrap"
+                         VerticalScrollBarVisibility="Auto"
+                         Background="Transparent" Foreground="#4AF626"
+                         FontFamily="Consolas" FontSize="12"
+                         Margin="12,8,12,8" BorderThickness="0"
+                         TextChanged="TxtLog_TextChanged"/>
             </Grid>
         </Border>
     </Grid>

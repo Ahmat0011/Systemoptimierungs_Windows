@@ -13,25 +13,41 @@ namespace SystemOptimierer.ViewModels
 {
     public class MainViewModel : INotifyPropertyChanged
     {
-        private readonly IOptimizerService _optimizerService;
+        private readonly IUpdateService  _updateService;
+        private readonly IDriverService  _driverService;
+        private readonly IRepairService  _repairService;
+        private readonly ICleanupService _cleanupService;
         private CancellationTokenSource _cts;
 
-        public MainViewModel(IOptimizerService optimizerService)
+        public MainViewModel(
+            IUpdateService  updateService,
+            IDriverService  driverService,
+            IRepairService  repairService,
+            ICleanupService cleanupService)
         {
-            _optimizerService = optimizerService;
-            
-            // Initialisiere Commands
-            CheckUpdatesCommand = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("Updates suchen", ct => _optimizerService.CheckUpdatesAsync(Log, ct)), _ => !IsBusy);
-            InstallUpdatesCommand = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("Updates installieren", ct => _optimizerService.InstallUpdatesAsync(Log, ct)), _ => !IsBusy);
-            RepairSystemCommand = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("System reparieren", ct => _optimizerService.RepairSystemAsync(Log, ct)), _ => !IsBusy);
-            OptimizeNetworkCommand = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("Netzwerk optimieren", ct => _optimizerService.OptimizeNetworkAsync(Log, ct), false), _ => !IsBusy);
-            CleanupSystemCommand = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("System bereinigen", ct => _optimizerService.CleanupSystemAsync(Log, ct), false), _ => !IsBusy);
-            CheckDriversCommand = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("Treiber suchen", ct => _optimizerService.CheckDriversAsync(Log, ct)), _ => !IsBusy);
-            InstallDriversCommand = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("Treiber installieren", ct => _optimizerService.InstallDriversAsync(Log, ct)), _ => !IsBusy);
-            CancelCommand = new RelayCommand(_ => CancelOperation(), _ => IsBusy);
-            RestartCommand = new RelayCommand(_ => RestartPC(), _ => !IsBusy);
+            _updateService  = updateService;
+            _driverService  = driverService;
+            _repairService  = repairService;
+            _cleanupService = cleanupService;
 
-            Log("Programm gestartet. Bereit für Befehle...\n");
+            // Update Center
+            CheckUpdatesCommand   = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("Updates suchen",       ct => _updateService.CheckUpdatesAsync(Log, ct)),   _ => !IsBusy);
+            InstallUpdatesCommand = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("Updates installieren", ct => _updateService.InstallUpdatesAsync(Log, ct)), _ => !IsBusy);
+            CheckDriversCommand   = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("Treiber suchen",       ct => _driverService.CheckDriversAsync(Log, ct)),   _ => !IsBusy);
+            InstallDriversCommand = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("Treiber installieren", ct => _driverService.InstallDriversAsync(Log, ct)), _ => !IsBusy);
+
+            // System-Reparatur
+            RepairSystemCommand   = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("System reparieren",   ct => _repairService.RepairSystemAsync(Log, ct)),    _ => !IsBusy);
+
+            // Bereinigung & Optimierung
+            CleanupSystemCommand  = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("System bereinigen",   ct => _cleanupService.CleanupSystemAsync(Log, ct),  false), _ => !IsBusy);
+            OptimizeNetworkCommand = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("Netzwerk optimieren", ct => _cleanupService.OptimizeNetworkAsync(Log, ct), false), _ => !IsBusy);
+
+            // Global
+            CancelCommand  = new RelayCommand(_ => CancelOperation(), _ => IsBusy);
+            RestartCommand = new RelayCommand(_ => RestartPC(),        _ => !IsBusy);
+
+            Log("System Optimierer gestartet. Bereit für Befehle...\n");
         }
 
         #region Properties

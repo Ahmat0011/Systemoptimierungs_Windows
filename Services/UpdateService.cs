@@ -6,7 +6,7 @@ namespace SystemOptimierer.Services
 {
     /// <summary>
     /// Führt Software-Updates über Winget durch.
-    /// Deep-Scan: Beide Installations-Scopes (machine &amp; user) sowie MS Store werden geprüft.
+    /// Deep-Scan: Beide Installations-Scopes (machine & user) sowie MS Store werden geprüft.
     /// WICHTIG: --include-unknown wird NIEMALS verwendet. Nur stabile, offizielle Versionen.
     /// </summary>
     public class UpdateService : IUpdateService

@@ -26,7 +26,7 @@ namespace SystemOptimierer.Services
 try {
     $session  = New-Object -ComObject Microsoft.Update.Session
     $searcher = $session.CreateUpdateSearcher()
-    # IncludePotentiallySupersededUpdates: findet auch aeltere Versionen, die noch relevant sein koennen
+    # IncludePotentiallySupersededUpdates: findet auch ältere Versionen, die noch relevant sein können
     $searcher.IncludePotentiallySupersededUpdates = $false
 
     Write-Host 'Verbinde mit Microsoft Windows Update Servern...'
@@ -59,7 +59,7 @@ try {
 
     $total = $mandatory.Updates.Count + $optional.Updates.Count
     Write-Host ''
-    Write-Host ('GESAMT: ' + $total + ' Treiber-Updates verfuegbar (Pflicht: ' + $mandatory.Updates.Count + ', Optional: ' + $optional.Updates.Count + ')')
+    Write-Host ('GESAMT: ' + $total + ' Treiber-Updates verfügbar (Pflicht: ' + $mandatory.Updates.Count + ', Optional: ' + $optional.Updates.Count + ')')
 
 } catch {
     Write-Host ('FEHLER bei der Treibersuche: ' + $_.Exception.Message)

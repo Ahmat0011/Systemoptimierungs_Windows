@@ -22,10 +22,11 @@ namespace SystemOptimierer.Services
             log("[1/6] Lösche temporäre Dateien...");
             await _cmd.RunCommandAsync("cmd", "/c del /q /f /s %temp%\\*",                          log, log, ct);
             await _cmd.RunCommandAsync("cmd", @"/c del /q /f /s C:\Windows\Temp\*",                 log, log, ct);
+            await _cmd.RunCommandAsync("cmd", @"/c del /q /f /s D:\Temp\* 2>nul",                   log, log, ct);
 
             if (ct.IsCancellationRequested) return;
 
-            log("[2/6] Leere den Papierkorb auf ALLEN Laufwerken...");
+            log("[2/6] Leere den Papierkorb auf ALLEN Laufwerken (C: und D:)...");
             await _ps.RunScriptAsync("Clear-RecycleBin -Force -ErrorAction SilentlyContinue", log, log, ct);
 
             if (ct.IsCancellationRequested) return;

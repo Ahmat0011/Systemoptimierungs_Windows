@@ -24,6 +24,8 @@ namespace SystemOptimierer.Services
 
             string script = @"
 try {
+    Write-Host 'Stelle sicher, dass der Windows Update Dienst (wuauserv) läuft...'
+    Start-Service wuauserv -ErrorAction SilentlyContinue
     $session  = New-Object -ComObject Microsoft.Update.Session
     $searcher = $session.CreateUpdateSearcher()
     # IncludePotentiallySupersededUpdates: findet auch ältere Versionen, die noch relevant sein können
@@ -75,6 +77,8 @@ try {
 
             string script = @"
 try {
+    Write-Host 'Stelle sicher, dass der Windows Update Dienst (wuauserv) läuft...'
+    Start-Service wuauserv -ErrorAction SilentlyContinue
     $session  = New-Object -ComObject Microsoft.Update.Session
     $searcher = $session.CreateUpdateSearcher()
 

@@ -1,4 +1,6 @@
+using System;
 using System.Windows;
+using System.Windows.Input;
 using SystemOptimierer.Services;
 using SystemOptimierer.ViewModels;
 
@@ -20,6 +22,33 @@ namespace SystemOptimierer
             var cleanupService = new CleanupService(commandService, powerShellService);
 
             DataContext = new MainViewModel(updateService, driverService, repairService, cleanupService);
+        }
+
+        // Title Bar Drag Logic
+        private void TitleBar_MouseDown(object sender, MouseButtonEventArgs e)
+        {
+            if (e.ChangedButton == MouseButton.Left)
+            {
+                this.DragMove();
+            }
+        }
+
+        private void BtnMinimize_Click(object sender, RoutedEventArgs e)
+        {
+            this.WindowState = WindowState.Minimized;
+        }
+
+        private void BtnMaximize_Click(object sender, RoutedEventArgs e)
+        {
+            if (this.WindowState == WindowState.Maximized)
+                this.WindowState = WindowState.Normal;
+            else
+                this.WindowState = WindowState.Maximized;
+        }
+
+        private void BtnClose_Click(object sender, RoutedEventArgs e)
+        {
+            this.Close();
         }
 
         // Auto-Scroll Feature für die Konsolen-TextBox

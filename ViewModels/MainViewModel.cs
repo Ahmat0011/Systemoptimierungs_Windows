@@ -118,11 +118,10 @@ namespace SystemOptimierer.ViewModels
 
         private void Log(string message)
         {
-            // Füge neue Nachricht hinzu und halte Log nicht unendlich lang
-            Application.Current.Dispatcher.Invoke(() =>
+            Application.Current.Dispatcher.BeginInvoke(new Action(() =>
             {
                 LogText += $"{message}\n";
-            });
+            }));
         }
 
         private bool IsInternetAvailable()
@@ -155,7 +154,8 @@ namespace SystemOptimierer.ViewModels
 
             try
             {
-                await action(_cts.Token);
+                // Korrektur: Nur noch EINMAL aufrufen und garantiert im Hintergrund ausführen!
+                await Task.Run(async () => await action(_cts.Token));
                 StatusMessage = $"{operationName} erfolgreich abgeschlossen.";
             }
             catch (TaskCanceledException)

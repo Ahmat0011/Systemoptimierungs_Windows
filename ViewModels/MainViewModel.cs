@@ -1,5 +1,8 @@
 using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Linq;
 using System.Net.NetworkInformation;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -7,6 +10,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
 using SystemOptimierer.Core;
+using SystemOptimierer.Models;
 using SystemOptimierer.Services;
 
 namespace SystemOptimierer.ViewModels
@@ -17,18 +21,21 @@ namespace SystemOptimierer.ViewModels
         private readonly IDriverService  _driverService;
         private readonly IRepairService  _repairService;
         private readonly ICleanupService _cleanupService;
-        private CancellationTokenSource _cts;
+        private readonly IUninstallerService _uninstallerService;
+        private CancellationTokenSource? _cts;
 
         public MainViewModel(
             IUpdateService  updateService,
             IDriverService  driverService,
             IRepairService  repairService,
-            ICleanupService cleanupService)
+            ICleanupService cleanupService,
+            IUninstallerService uninstallerService)
         {
             _updateService  = updateService;
             _driverService  = driverService;
             _repairService  = repairService;
             _cleanupService = cleanupService;
+            _uninstallerService = uninstallerService;
 
             // Update Center
             CheckUpdatesCommand   = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("Updates suchen",       ct => _updateService.CheckUpdatesAsync(Log, ct)),   _ => !IsBusy);
@@ -43,11 +50,21 @@ namespace SystemOptimierer.ViewModels
             CleanupSystemCommand  = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("System bereinigen",   ct => _cleanupService.CleanupSystemAsync(Log, ct),  false), _ => !IsBusy);
             OptimizeNetworkCommand = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("Netzwerk optimieren", ct => _cleanupService.OptimizeNetworkAsync(Log, ct), false), _ => !IsBusy);
 
+            // Uninstaller (Software & Apps Manager)
+            LoadAppsCommand = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("Software & Apps laden", ct => LoadAppsAsync(ct), false), _ => !IsBusy);
+            UninstallCommand = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("Deinstallation", ct => UninstallSelectedAppAsync(ct), false), _ => !IsBusy && (SelectedSoftware != null || SelectedUwpApp != null));
+
             // Global
             CancelCommand  = new RelayCommand(_ => CancelOperation(), _ => IsBusy);
-            RestartCommand = new RelayCommand(_ => RestartPC(),        _ => !IsBusy);
 
             Log("System Optimierer gestartet. Bereit für Befehle...\n");
+
+            // Apps beim Start im Hintergrund laden
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(300);
+                await ExecuteWithBusyStateAsync("Software & Apps laden", ct => LoadAppsAsync(ct), false);
+            });
         }
 
         #region Properties
@@ -98,6 +115,128 @@ namespace SystemOptimierer.ViewModels
             }
         }
 
+        private ObservableCollection<SoftwareItem> _installedSoftware = new();
+        public ObservableCollection<SoftwareItem> InstalledSoftware
+        {
+            get => _installedSoftware;
+            set
+            {
+                _installedSoftware = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(FilteredSoftware));
+            }
+        }
+
+        private ObservableCollection<SoftwareItem> _installedUwpApps = new();
+        public ObservableCollection<SoftwareItem> InstalledUwpApps
+        {
+            get => _installedUwpApps;
+            set
+            {
+                _installedUwpApps = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(FilteredUwpApps));
+            }
+        }
+
+        private string _searchText = string.Empty;
+        public string SearchText
+        {
+            get => _searchText;
+            set
+            {
+                if (_searchText != value)
+                {
+                    _searchText = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(FilteredSoftware));
+                    OnPropertyChanged(nameof(FilteredUwpApps));
+                }
+            }
+        }
+
+        private bool _cleanLeftovers = true;
+        public bool CleanLeftovers
+        {
+            get => _cleanLeftovers;
+            set
+            {
+                if (_cleanLeftovers != value)
+                {
+                    _cleanLeftovers = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        private SoftwareItem? _selectedSoftware;
+        public SoftwareItem? SelectedSoftware
+        {
+            get => _selectedSoftware;
+            set
+            {
+                if (_selectedSoftware != value)
+                {
+                    _selectedSoftware = value;
+                    OnPropertyChanged();
+                    if (value != null)
+                    {
+                        _selectedUwpApp = null;
+                        OnPropertyChanged(nameof(SelectedUwpApp));
+                    }
+                    CommandManager.InvalidateRequerySuggested();
+                }
+            }
+        }
+
+        private SoftwareItem? _selectedUwpApp;
+        public SoftwareItem? SelectedUwpApp
+        {
+            get => _selectedUwpApp;
+            set
+            {
+                if (_selectedUwpApp != value)
+                {
+                    _selectedUwpApp = value;
+                    OnPropertyChanged();
+                    if (value != null)
+                    {
+                        _selectedSoftware = null;
+                        OnPropertyChanged(nameof(SelectedSoftware));
+                    }
+                    CommandManager.InvalidateRequerySuggested();
+                }
+            }
+        }
+
+        public IEnumerable<SoftwareItem> FilteredSoftware
+        {
+            get
+            {
+                if (string.IsNullOrWhiteSpace(SearchText))
+                {
+                    return _installedSoftware;
+                }
+                return _installedSoftware.Where(app =>
+                    app.Name.Contains(SearchText, StringComparison.OrdinalIgnoreCase) ||
+                    app.Publisher.Contains(SearchText, StringComparison.OrdinalIgnoreCase));
+            }
+        }
+
+        public IEnumerable<SoftwareItem> FilteredUwpApps
+        {
+            get
+            {
+                if (string.IsNullOrWhiteSpace(SearchText))
+                {
+                    return _installedUwpApps;
+                }
+                return _installedUwpApps.Where(app =>
+                    app.Name.Contains(SearchText, StringComparison.OrdinalIgnoreCase) ||
+                    app.Publisher.Contains(SearchText, StringComparison.OrdinalIgnoreCase));
+            }
+        }
+
         #endregion
 
         #region Commands
@@ -109,8 +248,9 @@ namespace SystemOptimierer.ViewModels
         public ICommand CleanupSystemCommand { get; }
         public ICommand CheckDriversCommand { get; }
         public ICommand InstallDriversCommand { get; }
+        public ICommand LoadAppsCommand { get; }
+        public ICommand UninstallCommand { get; }
         public ICommand CancelCommand { get; }
-        public ICommand RestartCommand { get; }
 
         #endregion
 
@@ -154,7 +294,6 @@ namespace SystemOptimierer.ViewModels
 
             try
             {
-                // Korrektur: Nur noch EINMAL aufrufen und garantiert im Hintergrund ausführen!
                 await Task.Run(async () => await action(_cts.Token));
                 StatusMessage = $"{operationName} erfolgreich abgeschlossen.";
             }
@@ -176,6 +315,62 @@ namespace SystemOptimierer.ViewModels
             }
         }
 
+        private async Task LoadAppsAsync(CancellationToken ct)
+        {
+            Log("Lese installierte System-Programme aus (32-Bit & 64-Bit Scopes) & frage Windows Apps ab...");
+            
+            var classicTask = Task.Run(() => _uninstallerService.GetInstalledSoftware(), ct);
+            var uwpTask = _uninstallerService.GetInstalledUwpAppsAsync(Log, ct);
+
+            await Task.WhenAll(classicTask, uwpTask);
+            
+            if (ct.IsCancellationRequested) return;
+
+            var classicApps = classicTask.Result;
+            var uwpApps = uwpTask.Result;
+
+            // Auf dem Dispatcher-Thread in die Collections schreiben
+            await Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                _installedSoftware.Clear();
+                foreach (var app in classicApps)
+                {
+                    _installedSoftware.Add(app);
+                }
+
+                _installedUwpApps.Clear();
+                foreach (var app in uwpApps)
+                {
+                    _installedUwpApps.Add(app);
+                }
+
+                OnPropertyChanged(nameof(FilteredSoftware));
+                OnPropertyChanged(nameof(FilteredUwpApps));
+            });
+            
+            Log($"Erfolgreich {classicApps.Count} System-Programme und {uwpApps.Count} Windows Apps geladen.");
+        }
+
+        private async Task UninstallSelectedAppAsync(CancellationToken ct)
+        {
+            var app = SelectedSoftware ?? SelectedUwpApp;
+            if (app == null)
+            {
+                Log("FEHLER: Keine Anwendung zum Deinstallieren ausgewählt.");
+                return;
+            }
+
+            Log($"Bereite Deinstallation für '{app.Name}' vor...");
+            
+            // Führe Deinstallation im Hintergrund aus
+            await _uninstallerService.UninstallSoftwareAsync(app, CleanLeftovers, Log, ct);
+            
+            if (ct.IsCancellationRequested) return;
+
+            Log("Aktualisiere die Listen der installierten Anwendungen...");
+            await LoadAppsAsync(ct);
+        }
+
         private void CancelOperation()
         {
             if (_cts != null && !_cts.IsCancellationRequested)
@@ -185,29 +380,10 @@ namespace SystemOptimierer.ViewModels
             }
         }
 
-        private void RestartPC()
-        {
-            MessageBoxResult result = MessageBox.Show(
-                "Möchtest du den PC jetzt wirklich neu starten? Bitte speichere vorher alle offenen Dateien.", 
-                "Neustart bestätigen", 
-                MessageBoxButton.YesNo, 
-                MessageBoxImage.Warning);
-
-            if (result == MessageBoxResult.Yes)
-            {
-                Log("\n--- PC WIRD NEU GESTARTET ---");
-                System.Diagnostics.Process.Start("shutdown", "/r /t 0");
-            }
-            else
-            {
-                Log("Neustart abgebrochen.\n");
-            }
-        }
-
         #endregion
 
-        public event PropertyChangedEventHandler PropertyChanged;
-        protected virtual void OnPropertyChanged([CallerMemberName] string propertyName = null)
+        public event PropertyChangedEventHandler? PropertyChanged;
+        protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }

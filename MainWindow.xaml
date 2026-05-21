@@ -194,6 +194,295 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <!-- ===================== PREMIUM PROGRESSBAR ===================== -->
+        <Style x:Key="PremiumProgressBarStyle" TargetType="ProgressBar">
+            <Setter Property="Height" Value="6"/>
+            <Setter Property="Background" Value="#15171E"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ProgressBar">
+                        <Grid x:Name="TemplateRoot" SnapsToDevicePixels="true">
+                            <!-- Background Track -->
+                            <Border Background="{TemplateBinding Background}" CornerRadius="3" BorderThickness="0"/>
+                            
+                            <!-- Glowing Track (behind the indicator for back glow) -->
+                            <Border x:Name="GlowTrack" Background="Transparent" CornerRadius="3" Opacity="0.5"/>
+
+                            <!-- Standard Indicator (determinate) -->
+                            <Border x:Name="PART_Indicator" HorizontalAlignment="Left" Background="#2D72D9" CornerRadius="3">
+                                <Border.Effect>
+                                    <DropShadowEffect Color="#2D72D9" BlurRadius="6" ShadowDepth="0" Opacity="0.7"/>
+                                </Border.Effect>
+                            </Border>
+
+                            <!-- Glow effect container for Indeterminate state -->
+                            <Grid x:Name="AnimationVisuals" ClipToBounds="True" Visibility="Collapsed">
+                                <Border x:Name="GlowIndicator" CornerRadius="3" Width="150" HorizontalAlignment="Left">
+                                    <Border.Background>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                            <GradientStop Color="#2D72D9" Offset="0"/>
+                                            <GradientStop Color="#63A1FF" Offset="0.5"/>
+                                            <GradientStop Color="#2D72D9" Offset="1"/>
+                                        </LinearGradientBrush>
+                                    </Border.Background>
+                                    <Border.Effect>
+                                        <DropShadowEffect Color="#2D72D9" BlurRadius="10" ShadowDepth="0" Opacity="0.9"/>
+                                    </Border.Effect>
+                                    <Border.RenderTransform>
+                                        <TranslateTransform X="-150"/>
+                                    </Border.RenderTransform>
+                                </Border>
+                            </Grid>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsIndeterminate" Value="True">
+                                <Setter TargetName="PART_Indicator" Property="Visibility" Value="Collapsed"/>
+                                <Setter TargetName="AnimationVisuals" Property="Visibility" Value="Visible"/>
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard x:Name="IndeterminateAnimation">
+                                        <Storyboard RepeatBehavior="Forever">
+                                            <DoubleAnimation Storyboard.TargetName="GlowIndicator"
+                                                             Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)"
+                                                             From="-150" To="850" Duration="0:0:1.8">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <QuadraticEase EasingMode="EaseInOut"/>
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="GlowIndicator"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             From="0.7" To="1.0" Duration="0:0:0.9"
+                                                             AutoReverse="True" RepeatBehavior="Forever"/>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.EnterActions>
+                                <Trigger.ExitActions>
+                                    <StopStoryboard BeginStoryboardName="IndeterminateAnimation"/>
+                                </Trigger.ExitActions>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ===================== SEARCH TEXTBOX ===================== -->
+        <Style TargetType="TextBox" x:Key="ModernTextBoxStyle">
+            <Setter Property="Background" Value="#1A1C23"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderBrush" Value="#2A2D35"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="12,10"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="CaretBrush" Value="#4D9EFF"/>
+            <Setter Property="SelectionBrush" Value="#2D72D9"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border x:Name="border" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="6">
+                            <Grid VerticalAlignment="Center">
+                                <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"/>
+                                <TextBlock x:Name="placeholder" Text="{TemplateBinding Tag}"
+                                           Foreground="#555A67" Margin="14,10"
+                                           IsHitTestVisible="False" VerticalAlignment="Center"
+                                           Visibility="Collapsed"/>
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="Text" Value="">
+                                <Setter TargetName="placeholder" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                            <Trigger Property="IsFocused" Value="True">
+                                <Setter TargetName="placeholder" Property="Visibility" Value="Collapsed"/>
+                                <Setter TargetName="border" Property="BorderBrush" Value="#4D9EFF"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="BorderBrush" Value="#3D414E"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ===================== CHECKBOX ===================== -->
+        <Style TargetType="CheckBox" x:Key="PremiumCheckBoxStyle">
+            <Setter Property="Foreground" Value="#C8CBCF"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <BulletDecorator Background="Transparent">
+                            <BulletDecorator.Bullet>
+                                <Border x:Name="border" Width="18" Height="18"
+                                        Background="#1A1C23" BorderBrush="#2A2D35"
+                                        BorderThickness="1" CornerRadius="4"
+                                        VerticalAlignment="Center">
+                                    <Grid>
+                                        <TextBlock x:Name="checkMark" Text="✓"
+                                                   Foreground="#4D9EFF" FontSize="12"
+                                                   FontWeight="Bold" HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center" Visibility="Collapsed"/>
+                                    </Grid>
+                                </Border>
+                            </BulletDecorator.Bullet>
+                            <ContentPresenter Margin="8,0,0,0" VerticalAlignment="Center"/>
+                        </BulletDecorator>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="checkMark" Property="Visibility" Value="Visible"/>
+                                <Setter TargetName="border" Property="BorderBrush" Value="#4D9EFF"/>
+                                <Setter TargetName="border" Property="Background" Value="#1A2A4A"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="BorderBrush" Value="#3D82E9"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ===================== DATAGRID ===================== -->
+        <Style TargetType="DataGrid" x:Key="PremiumDataGridStyle">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="RowBackground" Value="#171921"/>
+            <Setter Property="AlternatingRowBackground" Value="#14151B"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="#22252D"/>
+            <Setter Property="Foreground" Value="#E2E2E2"/>
+            <Setter Property="GridLinesVisibility" Value="Horizontal"/>
+            <Setter Property="HorizontalGridLinesBrush" Value="#1C1E26"/>
+            <Setter Property="HeadersVisibility" Value="Column"/>
+            <Setter Property="SelectionMode" Value="Single"/>
+            <Setter Property="IsReadOnly" Value="True"/>
+            <Setter Property="AutoGenerateColumns" Value="False"/>
+            <Setter Property="CanUserAddRows" Value="False"/>
+            <Setter Property="CanUserResizeRows" Value="False"/>
+            <Setter Property="RowHeaderWidth" Value="0"/>
+            <Setter Property="CellStyle">
+                <Setter.Value>
+                    <Style TargetType="DataGridCell">
+                        <Setter Property="Padding" Value="14,10"/>
+                        <Setter Property="BorderThickness" Value="0"/>
+                        <Setter Property="Foreground" Value="#E2E2E2"/>
+                        <Setter Property="Background" Value="Transparent"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="DataGridCell">
+                                    <Border Padding="{TemplateBinding Padding}" Background="{TemplateBinding Background}">
+                                        <ContentPresenter VerticalAlignment="Center"/>
+                                    </Border>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                        <Style.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="RowStyle">
+                <Setter.Value>
+                    <Style TargetType="DataGridRow">
+                        <Setter Property="Background" Value="Transparent"/>
+                        <Setter Property="BorderThickness" Value="0"/>
+                        <Setter Property="Margin" Value="0,1,0,1"/>
+                        <Setter Property="Cursor" Value="Hand"/>
+                        <Style.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#1E2A4A"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter Property="Background" Value="#1F3D7A"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="ColumnHeaderStyle">
+                <Setter.Value>
+                    <Style TargetType="DataGridColumnHeader">
+                        <Setter Property="Background" Value="#1F222D"/>
+                        <Setter Property="Foreground" Value="#9EA3B0"/>
+                        <Setter Property="FontWeight" Value="SemiBold"/>
+                        <Setter Property="FontSize" Value="12"/>
+                        <Setter Property="Padding" Value="14,12"/>
+                        <Setter Property="BorderThickness" Value="0,0,0,2"/>
+                        <Setter Property="BorderBrush" Value="#2D72D9"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="DataGridColumnHeader">
+                                    <Border Background="{TemplateBinding Background}"
+                                            BorderBrush="{TemplateBinding BorderBrush}"
+                                            BorderThickness="{TemplateBinding BorderThickness}"
+                                            Padding="{TemplateBinding Padding}">
+                                        <ContentPresenter VerticalAlignment="Center" HorizontalAlignment="Left"/>
+                                    </Border>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                        <Style.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#252936"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Premium Dark-Themed TabControl & TabItem Styles -->
+        <Style TargetType="TabControl" x:Key="PremiumTabControlStyle">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+        </Style>
+
+        <Style TargetType="TabItem" x:Key="PremiumTabItemStyle">
+            <Setter Property="Foreground" Value="#707584"/>
+            <Setter Property="Background" Value="#1A1C23"/>
+            <Setter Property="BorderBrush" Value="#22252D"/>
+            <Setter Property="BorderThickness" Value="1,1,1,0"/>
+            <Setter Property="Margin" Value="0,0,6,0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Border x:Name="TabBorder" Background="{TemplateBinding Background}" 
+                                BorderBrush="{TemplateBinding BorderBrush}" 
+                                BorderThickness="{TemplateBinding BorderThickness}" 
+                                CornerRadius="6,6,0,0" Padding="20,10">
+                            <ContentPresenter ContentSource="Header" x:Name="TabHeader"
+                                              HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="TabBorder" Property="Background" Value="#242731"/>
+                                <Setter TargetName="TabBorder" Property="BorderBrush" Value="#323642"/>
+                                <Setter Property="Foreground" Value="#C2C5CC"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="TabBorder" Property="Background" Value="#111218"/>
+                                <Setter TargetName="TabBorder" Property="BorderBrush" Value="#2D72D9"/>
+                                <Setter TargetName="TabBorder" Property="BorderThickness" Value="1,1,1,1"/>
+                                <Setter Property="Foreground" Value="#2D72D9"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <!-- APP BODY -->
@@ -254,8 +543,8 @@
                                      Tag="🧹" Content="Bereinigung &amp; Optimierung"
                                      x:Name="NavCleanup"/>
                         <RadioButton Style="{StaticResource NavItemStyle}"
-                                     Tag="🔁" Content="Abschluss"
-                                     x:Name="NavRestart"/>
+                                     Tag="📦" Content="Software &amp; Apps"
+                                     x:Name="NavSoftwareManager"/>
                     </StackPanel>
 
                     <!-- Version Info -->
@@ -378,32 +667,137 @@
                     </StackPanel>
                 </ScrollViewer>
 
-                <!-- Tab 4: Abschluss -->
-                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,10,0">
-                    <ScrollViewer.Style>
-                        <Style TargetType="ScrollViewer">
+                <!-- Tab 4: Software & Apps Manager -->
+                <Grid>
+                    <Grid.Style>
+                        <Style TargetType="Grid">
                             <Setter Property="Visibility" Value="Collapsed"/>
                             <Style.Triggers>
-                                <DataTrigger Binding="{Binding IsChecked, ElementName=NavRestart}" Value="True">
+                                <DataTrigger Binding="{Binding IsChecked, ElementName=NavSoftwareManager}" Value="True">
                                     <Setter Property="Visibility" Value="Visible"/>
                                 </DataTrigger>
                             </Style.Triggers>
                         </Style>
-                    </ScrollViewer.Style>
-                    <StackPanel>
-                        <TextBlock Text="Abschluss" Foreground="White" FontSize="22" FontWeight="Light" Margin="0,0,0,4"/>
-                        <TextBlock Text="Alle Änderungen final übernehmen" Foreground="#4D9EFF" FontSize="12" Margin="0,0,0,22"/>
+                    </Grid.Style>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/> <!-- Header -->
+                        <RowDefinition Height="*"/>    <!-- TabControl with separate sub-views -->
+                    </Grid.RowDefinitions>
 
-                        <Border Style="{StaticResource CardStyle}" BorderBrush="#4A1C1C" Background="#1D1215">
-                            <StackPanel>
-                                <TextBlock Text="System Neustart" Foreground="#FF6B6B" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,5"/>
-                                <TextBlock Foreground="#905050" FontSize="12" Margin="0,0,0,14" TextWrapping="Wrap"
-                                           Text="Startet den PC neu, um alle installierten Updates und Reparaturen final zu aktivieren. Bitte speichere vorher alle offenen Dateien und Projekte."/>
-                                <Button Content="🔁  JETZT NEUSTARTEN" Command="{Binding RestartCommand}" Style="{StaticResource DangerButtonStyle}" Width="200" HorizontalAlignment="Left"/>
-                            </StackPanel>
-                        </Border>
+                    <!-- Header -->
+                    <StackPanel Grid.Row="0" Margin="0,0,0,15">
+                        <TextBlock Text="Software &amp; Apps" Foreground="White" FontSize="22" FontWeight="Light" Margin="0,0,0,4"/>
+                        <TextBlock Text="Systemspezifische Programme &amp; Store Apps getrennt verwalten, live filtern und tiefenreinigen" Foreground="#4D9EFF" FontSize="12"/>
                     </StackPanel>
-                </ScrollViewer>
+
+                    <!-- Modern WPF TabControl for separating Classic vs Store Apps -->
+                    <TabControl Grid.Row="1" Style="{StaticResource PremiumTabControlStyle}">
+                        
+                        <!-- Reiter 1: System-Programme (Klassische Desktop-Software) -->
+                        <TabItem Header="System-Programme" Style="{StaticResource PremiumTabItemStyle}">
+                            <Grid Margin="0,15,0,0">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/> <!-- Search bar -->
+                                    <RowDefinition Height="*"/>    <!-- DataGrid -->
+                                    <RowDefinition Height="Auto"/> <!-- Controls -->
+                                </Grid.RowDefinitions>
+
+                                <!-- Search Bar -->
+                                <Grid Grid.Row="0" Margin="0,0,0,15">
+                                    <TextBox Style="{StaticResource ModernTextBoxStyle}" 
+                                             Tag="Nach Name filtern..."
+                                             Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                                             Height="38" VerticalContentAlignment="Center"/>
+                                    <TextBlock Text="🔍" Foreground="#555A67" FontSize="14" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,15,0" IsHitTestVisible="False"/>
+                                </Grid>
+
+                                <!-- DataGrid -->
+                                <DataGrid Grid.Row="1" Style="{StaticResource PremiumDataGridStyle}"
+                                          ItemsSource="{Binding FilteredSoftware}"
+                                          SelectedItem="{Binding SelectedSoftware}"
+                                          Margin="0,0,0,15" FocusVisualStyle="{x:Null}">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Programmname" Binding="{Binding Name}" Width="*" />
+                                        <DataGridTextColumn Header="Version" Binding="{Binding DisplayVersion}" Width="140" />
+                                        <DataGridTextColumn Header="Herausgeber" Binding="{Binding Publisher}" Width="200" />
+                                        <DataGridTextColumn Header="Größe" Binding="{Binding EstimatedSize}" Width="110" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
+
+                                <!-- Controls -->
+                                <Border Grid.Row="2" Background="#1A1C23" BorderBrush="#22252D" BorderThickness="1" CornerRadius="8" Padding="15,12">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        
+                                        <CheckBox Grid.Column="0" Content="Restliche Dateien und leere Ordner automatisch löschen" 
+                                                  IsChecked="{Binding CleanLeftovers}"
+                                                  Style="{StaticResource PremiumCheckBoxStyle}" />
+                                        
+                                        <Button Grid.Column="1" Content="🗑  Deinstallieren" 
+                                                Command="{Binding UninstallCommand}" 
+                                                Style="{StaticResource ModernButtonStyle}" 
+                                                Width="160" Height="36" Margin="10,0,0,0" />
+                                    </Grid>
+                                </Border>
+                            </Grid>
+                        </TabItem>
+
+                        <!-- Reiter 2: Windows Apps (Microsoft Store / UWP Apps) -->
+                        <TabItem Header="Windows Apps" Style="{StaticResource PremiumTabItemStyle}">
+                            <Grid Margin="0,15,0,0">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/> <!-- Search bar -->
+                                    <RowDefinition Height="*"/>    <!-- DataGrid -->
+                                    <RowDefinition Height="Auto"/> <!-- Controls -->
+                                </Grid.RowDefinitions>
+
+                                <!-- Search Bar -->
+                                <Grid Grid.Row="0" Margin="0,0,0,15">
+                                    <TextBox Style="{StaticResource ModernTextBoxStyle}" 
+                                             Tag="Nach Name filtern..."
+                                             Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                                             Height="38" VerticalContentAlignment="Center"/>
+                                    <TextBlock Text="🔍" Foreground="#555A67" FontSize="14" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,15,0" IsHitTestVisible="False"/>
+                                </Grid>
+
+                                <!-- DataGrid -->
+                                <DataGrid Grid.Row="1" Style="{StaticResource PremiumDataGridStyle}"
+                                          ItemsSource="{Binding FilteredUwpApps}"
+                                          SelectedItem="{Binding SelectedUwpApp}"
+                                          Margin="0,0,0,15" FocusVisualStyle="{x:Null}">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Programmname" Binding="{Binding Name}" Width="*" />
+                                        <DataGridTextColumn Header="Version" Binding="{Binding DisplayVersion}" Width="140" />
+                                        <DataGridTextColumn Header="Herausgeber" Binding="{Binding Publisher}" Width="200" />
+                                        <DataGridTextColumn Header="Größe" Binding="{Binding EstimatedSize}" Width="110" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
+
+                                <!-- Controls -->
+                                <Border Grid.Row="2" Background="#1A1C23" BorderBrush="#22252D" BorderThickness="1" CornerRadius="8" Padding="15,12">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        
+                                        <CheckBox Grid.Column="0" Content="Restliche Dateien und leere Ordner automatisch löschen" 
+                                                  IsChecked="{Binding CleanLeftovers}"
+                                                  Style="{StaticResource PremiumCheckBoxStyle}" />
+                                        
+                                        <Button Grid.Column="1" Content="🗑  Deinstallieren" 
+                                                Command="{Binding UninstallCommand}" 
+                                                Style="{StaticResource ModernButtonStyle}" 
+                                                Width="160" Height="36" Margin="10,0,0,0" />
+                                    </Grid>
+                                </Border>
+                            </Grid>
+                        </TabItem>
+                    </TabControl>
+                </Grid>
             </Grid>
 
             <!-- ===== STATUS BAR ===== -->
@@ -415,14 +809,26 @@
 
                 <StackPanel Grid.Column="0" VerticalAlignment="Center">
                     <TextBlock Text="{Binding StatusMessage}" Foreground="#4D9EFF" FontWeight="SemiBold" FontSize="13" Margin="0,0,0,5"/>
-                    <ProgressBar Height="3" IsIndeterminate="{Binding IsBusy}" BorderThickness="0"
-                                 Background="#1A1C23" Foreground="#4D9EFF">
+                    <ProgressBar IsIndeterminate="{Binding IsBusy}">
                         <ProgressBar.Style>
-                            <Style TargetType="ProgressBar">
-                                <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style TargetType="ProgressBar" BasedOn="{StaticResource PremiumProgressBarStyle}">
+                                <Setter Property="Opacity" Value="0"/>
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding IsBusy}" Value="True">
-                                        <Setter Property="Visibility" Value="Visible"/>
+                                        <DataTrigger.EnterActions>
+                                            <BeginStoryboard>
+                                                <Storyboard>
+                                                    <DoubleAnimation Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.3"/>
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </DataTrigger.EnterActions>
+                                        <DataTrigger.ExitActions>
+                                            <BeginStoryboard>
+                                                <Storyboard>
+                                                    <DoubleAnimation Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.3"/>
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </DataTrigger.ExitActions>
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>

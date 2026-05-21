@@ -16,12 +16,13 @@ namespace SystemOptimierer
             var commandService    = new CommandExecutionService();
             var powerShellService = new PowerShellService(commandService);
 
-            var updateService  = new UpdateService(commandService);
-            var driverService  = new DriverService(powerShellService);
-            var repairService  = new RepairService(commandService);
-            var cleanupService = new CleanupService(commandService, powerShellService);
+            var updateService      = new UpdateService(commandService);
+            var driverService      = new DriverService(powerShellService);
+            var repairService      = new RepairService(commandService);
+            var cleanupService     = new CleanupService(commandService, powerShellService);
+            var uninstallerService = new UninstallerService(commandService, powerShellService);
 
-            DataContext = new MainViewModel(updateService, driverService, repairService, cleanupService);
+            DataContext = new MainViewModel(updateService, driverService, repairService, cleanupService, uninstallerService);
         }
 
         // Title Bar Drag Logic

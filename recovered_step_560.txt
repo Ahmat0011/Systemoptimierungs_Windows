@@ -1,0 +1,64 @@
+Created At: 2026-05-31T11:00:10Z
+Completed At: 2026-05-31T11:00:10Z
+File Path: `file:///d:/sahma/Documents/GitHub/Systemoptimierungs_Windows/MainWindow.xaml`
+Total Lines: 1021
+Total Bytes: 65195
+Showing lines 850 to 1021
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+850:                     <!-- Header -->
+851:                     <StackPanel Grid.Row="0" Margin="0,0,0,15">
+852:                         <TextBlock Text="System-Leistung" Foreground="White" FontSize="22" FontWeight="Light" Margin="0,0,0,4"/>
+853:                         <TextBlock Text="Arbeitsspeicher sicher optimieren und Autostart-Programme kontrollieren" Foreground="#4D9EFF" FontSize="12"/>
+854:                     </StackPanel>
+855: 
+856:                     <!-- RAM Card -->
+857:                     <Border Grid.Row="1" Style="{StaticResource CardStyle}" Margin="0,0,0,15">
+858:                         <Grid>
+859:                             <Grid.ColumnDefinitions>
+860:                                 <ColumnDefinition Width="*"/>
+861:                                 <ColumnDefinition Width="Auto"/>
+862:                             </Grid.ColumnDefinitions>
+863:                             <StackPanel Grid.Column="0">
+864:                                 <TextBlock Text="Arbeitsspeicher-Booster" Style="{StaticResource CardTitle}"/>
+865:                                 <TextBlock Style="{StaticResource CardDesc}"
+866:                                            Text="Bereinigt ungenutzten RAM aller laufenden Prozesse über das native Windows API EmptyWorkingSet, ohne gestartete Applikationen zu beenden oder zu stören."/>
+867:                             </StackPanel>
+868:                             <Button Grid.Column="1" Content="⚡ RAM-Speicher optimieren" 
+869:                                     Command="{Binding BoostRamCommand}" 
+870:          
+<truncated 8792 bytes>
+Value="Visible"/>
+989:                                 </DataTrigger>
+990:                             </Style.Triggers>
+991:                         </Style>
+992:                     </Button.Style>
+993:                 </Button>
+994:             </Grid>
+995: 
+996:             <!-- ===== LIVE CONSOLE ===== -->
+997:             <Border Grid.Row="3" Grid.Column="1" Margin="30,0,30,20"
+998:                     Background="#050505" BorderBrush="#2D72D9" BorderThickness="1" CornerRadius="8">
+999:                 <Grid>
+1000:                     <Grid.RowDefinitions>
+1001:                         <RowDefinition Height="Auto"/>
+1002:                         <RowDefinition Height="*"/>
+1003:                     </Grid.RowDefinitions>
+1004:                     <Border Grid.Row="0" Background="#0C1014" CornerRadius="8,8,0,0" Padding="15,7" BorderBrush="#1C2025" BorderThickness="0,0,0,1">
+1005:                         <TextBlock Text="▶  LIVE EXECUTION CONSOLE  //  SYSTEM.OVERRIDE"
+1006:                                    Foreground="#2D72D9" FontSize="10" FontFamily="Consolas" FontWeight="Bold"/>
+1007:                     </Border>
+1008:                     <TextBox x:Name="TxtLog" Grid.Row="1"
+1009:                              Text="{Binding LogText, Mode=OneWay}"
+1010:                              IsReadOnly="True" TextWrapping="Wrap"
+1011:                              VerticalScrollBarVisibility="Auto"
+1012:                              Background="Transparent" Foreground="#4AF626"
+1013:                              FontFamily="Consolas" FontSize="12" FontWeight="Medium"
+1014:                              Margin="12,8,12,8" BorderThickness="0"
+1015:                              TextChanged="TxtLog_TextChanged"/>
+1016:                 </Grid>
+1017:             </Border>
+1018:         </Grid>
+1019:     </Border>
+1020: </Window>
+1021: 
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

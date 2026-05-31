@@ -39,19 +39,29 @@ namespace SystemOptimierer.Services
                     process.BeginOutputReadLine();
                     process.BeginErrorReadLine();
 
-                    // Wait for the process to exit or the cancellation token to be triggered
                     try
                     {
                         await process.WaitForExitAsync(cancellationToken);
+                        
+                        // Mandatory: Wait synchronously for remaining event handlers to finish processing the redirected streams
+                        process.WaitForExit();
                     }
                     catch (TaskCanceledException)
                     {
-                        // Cleanly kill the process tree if cancellation was requested
                         if (!process.HasExited)
                         {
-                            process.Kill(true); // .NET core and later supports killing process tree
+                            process.Kill(true);
                             onError?.Invoke("Vorgang wurde abgebrochen.");
                         }
+                    }
+                    finally
+                    {
+                        // Clean up process streams
+                        try { process.CancelOutputRead(); } catch {}
+                        try { process.CancelErrorRead(); } catch {}
+                        
+                        try { process.StandardOutput.Close(); } catch {}
+                        try { process.StandardError.Close(); } catch {}
                     }
                 }
             }

@@ -133,7 +133,12 @@ Get-AppxPackage -AllUsers | Where-Object { -not $_.IsFramework -and $_.NonRemova
                 log($"PackageFullName: {item.PackageFullName}");
                 log($"[Aktion] Führe PowerShell-Deinstallation aus...");
                 
-                string removeScript = $"Remove-AppxPackage -PackageFullName \"{item.PackageFullName}\" -AllUsers";
+                string removeScript = $@"
+$PackageName = ""{item.PackageFullName}""
+$AppName = ""{item.Name}""
+Remove-AppxPackage -Package $PackageName -AllUsers -ErrorAction SilentlyContinue
+Get-AppxProvisionedPackage -Online | Where-Object {{ $_.DisplayName -eq $AppName -or $_.PackageName -eq $PackageName }} | Remove-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue
+";
                 try
                 {
                     bool success = true;

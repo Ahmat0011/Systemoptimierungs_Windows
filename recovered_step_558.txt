@@ -1,0 +1,65 @@
+Created At: 2026-05-31T11:00:08Z
+Completed At: 2026-05-31T11:00:08Z
+File Path: `file:///d:/sahma/Documents/GitHub/Systemoptimierungs_Windows/MainWindow.xaml`
+Total Lines: 1021
+Total Bytes: 65195
+Showing lines 700 to 850
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+700:                                 </DataTrigger>
+701:                             </Style.Triggers>
+702:                         </Style>
+703:                     </Grid.Style>
+704:                     <Grid.RowDefinitions>
+705:                         <RowDefinition Height="Auto"/> <!-- Header -->
+706:                         <RowDefinition Height="*"/>    <!-- TabControl with separate sub-views -->
+707:                     </Grid.RowDefinitions>
+708: 
+709:                     <!-- Header -->
+710:                     <StackPanel Grid.Row="0" Margin="0,0,0,15">
+711:                         <TextBlock Text="Software &amp; Apps" Foreground="White" FontSize="22" FontWeight="Light" Margin="0,0,0,4"/>
+712:                         <TextBlock Text="Systemspezifische Programme &amp; Store Apps getrennt verwalten, live filtern und tiefenreinigen" Foreground="#4D9EFF" FontSize="12"/>
+713:                     </StackPanel>
+714: 
+715:                     <!-- Modern WPF TabControl for separating Classic vs Store Apps -->
+716:                     <TabControl Grid.Row="1" Style="{StaticResource PremiumTabControlStyle}">
+717:                         
+718:                         <!-- Reiter 1: System-Programme (Klassische Desktop-Software) -->
+719:                         <TabItem Header="System-Programme" Style="{StaticResource PremiumTabItemStyle}">
+720:                             <Grid Margin="0,15,0,0">
+721:                                 <Grid.RowDefinitions>
+722:                                     <RowDefinition Height="Auto"/> <!-- Search bar -->
+723:           
+<truncated 7842 bytes>
+                                              Style="{StaticResource PremiumCheckBoxStyle}" />
+820:                                         
+821:                                         <Button Grid.Column="1" Content="🗑  Deinstallieren" 
+822:                                                 Command="{Binding UninstallCommand}" 
+823:                                                 Style="{StaticResource ModernButtonStyle}" 
+824:                                                 Width="160" Height="36" Margin="10,0,0,0" />
+825:                                     </Grid>
+826:                                 </Border>
+827:                             </Grid>
+828:                         </TabItem>
+829:                     </TabControl>
+830:                 </Grid>
+831: 
+832:                 <!-- Tab 5: System-Leistung -->
+833:                 <Grid>
+834:                     <Grid.Style>
+835:                         <Style TargetType="Grid">
+836:                             <Setter Property="Visibility" Value="Collapsed"/>
+837:                             <Style.Triggers>
+838:                                 <DataTrigger Binding="{Binding IsChecked, ElementName=NavPerformance}" Value="True">
+839:                                     <Setter Property="Visibility" Value="Visible"/>
+840:                                 </DataTrigger>
+841:                             </Style.Triggers>
+842:                         </Style>
+843:                     </Grid.Style>
+844:                     <Grid.RowDefinitions>
+845:                         <RowDefinition Height="Auto"/> <!-- Header -->
+846:                         <RowDefinition Height="Auto"/> <!-- RAM Card -->
+847:                         <RowDefinition Height="*"/>    <!-- Autostart Card/Grid -->
+848:                     </Grid.RowDefinitions>
+849: 
+850:                     <!-- Header -->
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

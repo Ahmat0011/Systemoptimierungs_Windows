@@ -173,6 +173,54 @@
             <Setter Property="Margin"      Value="0,0,0,10"/>
         </Style>
 
+        <!-- ===================== GLOBAL SCROLLBAR STYLE ===================== -->
+        <Style TargetType="ScrollBar">
+            <Setter Property="Background" Value="#121212"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Width" Value="8"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollBar">
+                        <Grid x:Name="Bg" SnapsToDevicePixels="true" Background="#121212">
+                            <Track x:Name="PART_Track" IsDirectionReversed="true" Grid.Row="0">
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton Command="ScrollBar.PageUpCommand" Opacity="0" Focusable="false"/>
+                                </Track.DecreaseRepeatButton>
+                                <Track.Thumb>
+                                    <Thumb x:Name="Thumb" Margin="1,0,1,0">
+                                        <Thumb.Template>
+                                            <ControlTemplate TargetType="Thumb">
+                                                <Border Background="#3A3D4A" CornerRadius="4"/>
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
+                                </Track.Thumb>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton Command="ScrollBar.PageDownCommand" Opacity="0" Focusable="false"/>
+                                </Track.IncreaseRepeatButton>
+                            </Track>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="Orientation" Value="Horizontal">
+                                <Setter Property="Width" Value="Auto"/>
+                                <Setter Property="Height" Value="8"/>
+                                <Setter TargetName="PART_Track" Property="IsDirectionReversed" Value="False"/>
+                                <Setter TargetName="Thumb" Property="Margin" Value="0,1,0,1"/>
+                                <Setter TargetName="Thumb" Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="Thumb">
+                                            <Border Background="#3A3D4A" CornerRadius="4"/>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- ===================== SCROLLBAR ===================== -->
         <Style TargetType="ScrollViewer">
             <Setter Property="Template">
@@ -309,6 +357,170 @@
             </Setter>
         </Style>
 
+        <!-- ===================== COMBOBOX ===================== -->
+        <Style x:Key="ComboBoxToggleButton" TargetType="ToggleButton">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="templateRoot" 
+                                Background="#1A1C23" 
+                                BorderBrush="#242731" 
+                                BorderThickness="1" 
+                                CornerRadius="4"
+                                SnapsToDevicePixels="true">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="30"/>
+                                </Grid.ColumnDefinitions>
+                                <!-- Arrow -->
+                                <Path x:Name="arrow" 
+                                      Grid.Column="1"
+                                      Data="M 0 0 L 4 4 L 8 0 Z" 
+                                      Fill="#C2C5CC" 
+                                      HorizontalAlignment="Center" 
+                                      VerticalAlignment="Center"/>
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="true">
+                                <Setter TargetName="templateRoot" Property="Background" Value="#242731"/>
+                                <Setter TargetName="templateRoot" Property="BorderBrush" Value="#3D414E"/>
+                                <Setter TargetName="arrow" Property="Fill" Value="White"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="true">
+                                <Setter TargetName="templateRoot" Property="Background" Value="#111218"/>
+                                <Setter TargetName="templateRoot" Property="BorderBrush" Value="#2D72D9"/>
+                                <Setter TargetName="arrow" Property="Fill" Value="#4D9EFF"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="false">
+                                <Setter TargetName="templateRoot" Property="Background" Value="#15171E"/>
+                                <Setter TargetName="templateRoot" Property="BorderBrush" Value="#1A1C23"/>
+                                <Setter TargetName="arrow" Property="Fill" Value="#444"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="PremiumComboBoxStyle" TargetType="ComboBox">
+            <Setter Property="Background" Value="#1A1C23"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+            <Setter Property="BorderBrush" Value="#242731"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="ItemContainerStyle">
+                <Setter.Value>
+                    <Style TargetType="ComboBoxItem">
+                        <Setter Property="Background" Value="#111218"/>
+                        <Setter Property="Foreground" Value="#C2C5CC"/>
+                        <Setter Property="Padding" Value="12,8"/>
+                        <Setter Property="BorderThickness" Value="0"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="ComboBoxItem">
+                                    <Border x:Name="Gd" 
+                                            Background="{TemplateBinding Background}" 
+                                            BorderThickness="{TemplateBinding BorderThickness}" 
+                                            Padding="{TemplateBinding Padding}"
+                                            SnapsToDevicePixels="true">
+                                        <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                          VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="true">
+                                            <Setter TargetName="Gd" Property="Background" Value="#2D72D9"/>
+                                            <Setter Property="Foreground" Value="White"/>
+                                        </Trigger>
+                                        <Trigger Property="IsSelected" Value="true">
+                                            <Setter TargetName="Gd" Property="Background" Value="#1B4E9B"/>
+                                            <Setter Property="Foreground" Value="White"/>
+                                        </Trigger>
+                                        <Trigger Property="IsEnabled" Value="false">
+                                            <Setter Property="Foreground" Value="#555"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid x:Name="templateRoot" SnapsToDevicePixels="true">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="0" MaxWidth="0"/>
+                            </Grid.ColumnDefinitions>
+                            
+                            <!-- Toggle Button serving as background and drop-down indicator -->
+                            <ToggleButton x:Name="toggleButton" 
+                                          Grid.ColumnSpan="2" 
+                                          Style="{StaticResource ComboBoxToggleButton}"
+                                          Focusable="false"
+                                          IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"/>
+                            
+                            <!-- Display Area of the selected item -->
+                            <ContentPresenter x:Name="contentPresenter"
+                                              Content="{TemplateBinding SelectionBoxItem}"
+                                              ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                              ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
+                                              ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}"
+                                              HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                              Margin="{TemplateBinding Padding}"
+                                              TextElement.Foreground="{TemplateBinding Foreground}"
+                                              IsHitTestVisible="false"/>
+                            
+                            <!-- Popup showing the dropdown items -->
+                            <Popup x:Name="PART_Popup"
+                                   Grid.ColumnSpan="2"
+                                   IsOpen="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}}"
+                                   Placement="Bottom"
+                                   PopupAnimation="{DynamicResource {x:Static SystemParameters.ComboBoxPopupAnimationKey}}">
+                                <Border x:Name="dropDownBorder"
+                                        Background="#111218"
+                                        BorderBrush="#242731"
+                                        BorderThickness="1"
+                                        CornerRadius="4"
+                                        MaxHeight="{TemplateBinding MaxDropDownHeight}"
+                                        MinWidth="{Binding ActualWidth, ElementName=templateRoot}"
+                                        Margin="0,2,0,0">
+                                    <ScrollViewer x:Name="dropDownScrollViewer" SnapsToDevicePixels="true">
+                                        <Grid x:Name="grid" RenderOptions.ClearTypeHint="Enabled">
+                                            <Canvas x:Name="canvas" HorizontalAlignment="Left" Height="0" VerticalAlignment="Top" Width="0">
+                                                <Rectangle x:Name="opaqueRect" 
+                                                           Fill="{Binding Background, ElementName=dropDownBorder}" 
+                                                           Height="{Binding ActualHeight, ElementName=dropDownBorder}" 
+                                                           Width="{Binding ActualWidth, ElementName=dropDownBorder}"/>
+                                            </Canvas>
+                                            <ItemsPresenter x:Name="ItemsPresenter" 
+                                                            KeyboardNavigation.DirectionalNavigation="Contained" 
+                                                            SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"/>
+                                        </Grid>
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="HasItems" Value="false">
+                                <Setter TargetName="dropDownBorder" Property="Height" Value="95"/>
+                            </Trigger>
+                            <Trigger Property="IsGrouping" Value="true">
+                                <Setter Property="ScrollViewer.CanContentScroll" Value="false"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- ===================== CHECKBOX ===================== -->
         <Style TargetType="CheckBox" x:Key="PremiumCheckBoxStyle">
             <Setter Property="Foreground" Value="#C8CBCF"/>
@@ -326,9 +538,13 @@
                                         VerticalAlignment="Center">
                                     <Grid>
                                         <TextBlock x:Name="checkMark" Text="✓"
-                                                   Foreground="#4D9EFF" FontSize="12"
+                                                   Foreground="#2D72D9" FontSize="12"
                                                    FontWeight="Bold" HorizontalAlignment="Center"
-                                                   VerticalAlignment="Center" Visibility="Collapsed"/>
+                                                   VerticalAlignment="Center" Visibility="Collapsed">
+                                            <TextBlock.Effect>
+                                                <DropShadowEffect Color="#2D72D9" BlurRadius="6" ShadowDepth="0" Opacity="0.8"/>
+                                            </TextBlock.Effect>
+                                        </TextBlock>
                                     </Grid>
                                 </Border>
                             </BulletDecorator.Bullet>
@@ -337,11 +553,53 @@
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsChecked" Value="True">
                                 <Setter TargetName="checkMark" Property="Visibility" Value="Visible"/>
-                                <Setter TargetName="border" Property="BorderBrush" Value="#4D9EFF"/>
-                                <Setter TargetName="border" Property="Background" Value="#1A2A4A"/>
+                                <Setter TargetName="border" Property="BorderBrush" Value="#2D72D9"/>
+                                <Setter TargetName="border" Property="Background" Value="#1A2233"/>
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="border" Property="BorderBrush" Value="#3D82E9"/>
+                                <Setter TargetName="border" Property="BorderBrush" Value="#2D72D9"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ===================== RADIOBUTTON ===================== -->
+        <Style TargetType="RadioButton" x:Key="PremiumRadioButtonStyle">
+            <Setter Property="Foreground" Value="#C8CBCF"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <BulletDecorator Background="Transparent">
+                            <BulletDecorator.Bullet>
+                                <Border x:Name="border" Width="18" Height="18"
+                                        Background="#1A1C23" BorderBrush="#2A2D35"
+                                        BorderThickness="1" CornerRadius="9"
+                                        VerticalAlignment="Center">
+                                    <Grid>
+                                        <Ellipse x:Name="dot" Width="8" Height="8"
+                                                 Fill="#2D72D9" Visibility="Collapsed">
+                                            <Ellipse.Effect>
+                                                <DropShadowEffect Color="#2D72D9" BlurRadius="6" ShadowDepth="0" Opacity="0.8"/>
+                                            </Ellipse.Effect>
+                                        </Ellipse>
+                                    </Grid>
+                                </Border>
+                            </BulletDecorator.Bullet>
+                            <ContentPresenter Margin="8,0,0,0" VerticalAlignment="Center"/>
+                        </BulletDecorator>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="dot" Property="Visibility" Value="Visible"/>
+                                <Setter TargetName="border" Property="BorderBrush" Value="#2D72D9"/>
+                                <Setter TargetName="border" Property="Background" Value="#1A2233"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="BorderBrush" Value="#2D72D9"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -352,13 +610,13 @@
         <!-- ===================== DATAGRID ===================== -->
         <Style TargetType="DataGrid" x:Key="PremiumDataGridStyle">
             <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="RowBackground" Value="#171921"/>
-            <Setter Property="AlternatingRowBackground" Value="#14151B"/>
+            <Setter Property="RowBackground" Value="#1A1C23"/>
+            <Setter Property="AlternatingRowBackground" Value="#16171E"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="BorderBrush" Value="#22252D"/>
+            <Setter Property="BorderBrush" Value="#242731"/>
             <Setter Property="Foreground" Value="#E2E2E2"/>
             <Setter Property="GridLinesVisibility" Value="Horizontal"/>
-            <Setter Property="HorizontalGridLinesBrush" Value="#1C1E26"/>
+            <Setter Property="HorizontalGridLinesBrush" Value="#242731"/>
             <Setter Property="HeadersVisibility" Value="Column"/>
             <Setter Property="SelectionMode" Value="Single"/>
             <Setter Property="IsReadOnly" Value="True"/>
@@ -366,10 +624,11 @@
             <Setter Property="CanUserAddRows" Value="False"/>
             <Setter Property="CanUserResizeRows" Value="False"/>
             <Setter Property="RowHeaderWidth" Value="0"/>
+            <Setter Property="RowHeight" Value="40"/>
             <Setter Property="CellStyle">
                 <Setter.Value>
                     <Style TargetType="DataGridCell">
-                        <Setter Property="Padding" Value="14,10"/>
+                        <Setter Property="Padding" Value="12,8"/>
                         <Setter Property="BorderThickness" Value="0"/>
                         <Setter Property="Foreground" Value="#E2E2E2"/>
                         <Setter Property="Background" Value="Transparent"/>
@@ -399,10 +658,11 @@
                         <Setter Property="Cursor" Value="Hand"/>
                         <Style.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Background" Value="#1E2A4A"/>
+                                <Setter Property="Background" Value="#242731"/>
                             </Trigger>
                             <Trigger Property="IsSelected" Value="True">
-                                <Setter Property="Background" Value="#1F3D7A"/>
+                                <Setter Property="Background" Value="#2D72D9"/>
+                                <Setter Property="Foreground" Value="White"/>
                             </Trigger>
                         </Style.Triggers>
                     </Style>
@@ -411,11 +671,11 @@
             <Setter Property="ColumnHeaderStyle">
                 <Setter.Value>
                     <Style TargetType="DataGridColumnHeader">
-                        <Setter Property="Background" Value="#1F222D"/>
-                        <Setter Property="Foreground" Value="#9EA3B0"/>
+                        <Setter Property="Background" Value="#1A1C23"/>
+                        <Setter Property="Foreground" Value="White"/>
                         <Setter Property="FontWeight" Value="SemiBold"/>
-                        <Setter Property="FontSize" Value="12"/>
-                        <Setter Property="Padding" Value="14,12"/>
+                        <Setter Property="FontSize" Value="13"/>
+                        <Setter Property="Padding" Value="12,8"/>
                         <Setter Property="BorderThickness" Value="0,0,0,2"/>
                         <Setter Property="BorderBrush" Value="#2D72D9"/>
                         <Setter Property="Template">
@@ -432,7 +692,7 @@
                         </Setter>
                         <Style.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Background" Value="#252936"/>
+                                <Setter Property="Background" Value="#242731"/>
                                 <Setter Property="Foreground" Value="White"/>
                             </Trigger>
                         </Style.Triggers>
@@ -545,6 +805,12 @@
                         <RadioButton Style="{StaticResource NavItemStyle}"
                                      Tag="📦" Content="Software &amp; Apps"
                                      x:Name="NavSoftwareManager"/>
+                        <RadioButton Style="{StaticResource NavItemStyle}"
+                                     Tag="🚀" Content="System-Leistung"
+                                     x:Name="NavPerformance"/>
+                        <RadioButton Style="{StaticResource NavItemStyle}"
+                                     Tag="🛡️" Content="Daten-Wiederherstellung"
+                                     x:Name="NavRecovery"/>
                     </StackPanel>
 
                     <!-- Version Info -->
@@ -714,9 +980,17 @@
                                 <!-- DataGrid -->
                                 <DataGrid Grid.Row="1" Style="{StaticResource PremiumDataGridStyle}"
                                           ItemsSource="{Binding FilteredSoftware}"
-                                          SelectedItem="{Binding SelectedSoftware}"
                                           Margin="0,0,0,15" FocusVisualStyle="{x:Null}">
                                     <DataGrid.Columns>
+                                        <DataGridTemplateColumn Width="40" CanUserResize="False">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <CheckBox IsChecked="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}" 
+                                                              HorizontalAlignment="Center" VerticalAlignment="Center" 
+                                                              Style="{StaticResource PremiumCheckBoxStyle}"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
                                         <DataGridTextColumn Header="Programmname" Binding="{Binding Name}" Width="*" />
                                         <DataGridTextColumn Header="Version" Binding="{Binding DisplayVersion}" Width="140" />
                                         <DataGridTextColumn Header="Herausgeber" Binding="{Binding Publisher}" Width="200" />
@@ -766,9 +1040,17 @@
                                 <!-- DataGrid -->
                                 <DataGrid Grid.Row="1" Style="{StaticResource PremiumDataGridStyle}"
                                           ItemsSource="{Binding FilteredUwpApps}"
-                                          SelectedItem="{Binding SelectedUwpApp}"
                                           Margin="0,0,0,15" FocusVisualStyle="{x:Null}">
                                     <DataGrid.Columns>
+                                        <DataGridTemplateColumn Width="40" CanUserResize="False">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <CheckBox IsChecked="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}" 
+                                                              HorizontalAlignment="Center" VerticalAlignment="Center" 
+                                                              Style="{StaticResource PremiumCheckBoxStyle}"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
                                         <DataGridTextColumn Header="Programmname" Binding="{Binding Name}" Width="*" />
                                         <DataGridTextColumn Header="Version" Binding="{Binding DisplayVersion}" Width="140" />
                                         <DataGridTextColumn Header="Herausgeber" Binding="{Binding Publisher}" Width="200" />
@@ -797,6 +1079,283 @@
                             </Grid>
                         </TabItem>
                     </TabControl>
+                </Grid>
+
+                <!-- Tab 5: System-Leistung -->
+                <Grid>
+                    <Grid.Style>
+                        <Style TargetType="Grid">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsChecked, ElementName=NavPerformance}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Grid.Style>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/> <!-- Header -->
+                        <RowDefinition Height="Auto"/> <!-- RAM Card -->
+                        <RowDefinition Height="*"/>    <!-- Autostart Card/Grid -->
+                    </Grid.RowDefinitions>
+
+                    <!-- Header -->
+                    <StackPanel Grid.Row="0" Margin="0,0,0,15">
+                        <TextBlock Text="System-Leistung" Foreground="White" FontSize="22" FontWeight="Light" Margin="0,0,0,4"/>
+                        <TextBlock Text="Arbeitsspeicher sicher optimieren und Autostart-Programme kontrollieren" Foreground="#4D9EFF" FontSize="12"/>
+                    </StackPanel>
+
+                    <!-- RAM Card -->
+                    <Border Grid.Row="1" Style="{StaticResource CardStyle}" Margin="0,0,0,15">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Arbeitsspeicher-Booster" Style="{StaticResource CardTitle}"/>
+                                <TextBlock Style="{StaticResource CardDesc}"
+                                           Text="Bereinigt ungenutzten RAM aller laufenden Prozesse über das native Windows API EmptyWorkingSet, ohne gestartete Applikationen zu beenden oder zu stören."/>
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="⚡ RAM-Speicher optimieren" 
+                                    Command="{Binding BoostRamCommand}" 
+                                    Style="{StaticResource ModernButtonStyle}" 
+                                    Width="220" Height="40" VerticalAlignment="Center"/>
+                        </Grid>
+                    </Border>
+
+                    <!-- Autostart Card -->
+                    <Grid Grid.Row="2">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/> <!-- Search bar -->
+                            <RowDefinition Height="*"/>    <!-- DataGrid -->
+                        </Grid.RowDefinitions>
+
+                        <!-- Search Bar -->
+                        <Grid Grid.Row="0" Margin="0,0,0,15">
+                            <TextBox Style="{StaticResource ModernTextBoxStyle}" 
+                                     Tag="Autostart durchsuchen..."
+                                     Text="{Binding StartupSearchText, UpdateSourceTrigger=PropertyChanged}"
+                                     Height="38" VerticalContentAlignment="Center"/>
+                            <TextBlock Text="🔍" Foreground="#555A67" FontSize="14" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,15,0" IsHitTestVisible="False"/>
+                        </Grid>
+
+                        <!-- DataGrid -->
+                        <DataGrid Grid.Row="1" Style="{StaticResource PremiumDataGridStyle}"
+                                  ItemsSource="{Binding FilteredStartupItems}"
+                                  Margin="0,0,0,15" FocusVisualStyle="{x:Null}">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Programmname" Binding="{Binding Name}" Width="180" />
+                                <DataGridTextColumn Header="Start-Pfad" Binding="{Binding Path}" Width="*" />
+                                <DataGridTextColumn Header="Bereich" Binding="{Binding RegistryKeyPath}" Width="90" />
+                                <DataGridTemplateColumn Header="Status" Width="100">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock VerticalAlignment="Center" HorizontalAlignment="Center" FontWeight="SemiBold">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Text" Value="Aktiviert"/>
+                                                        <Setter Property="Foreground" Value="#4AF626"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsEnabled}" Value="False">
+                                                                <Setter Property="Text" Value="Deaktiviert"/>
+                                                                <Setter Property="Foreground" Value="#FF3B30"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTemplateColumn Header="Aktion" Width="130">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Button Command="{Binding DataContext.ToggleStartupCommand, RelativeSource={RelativeSource AncestorType=DataGrid}}" 
+                                                    CommandParameter="{Binding}"
+                                                    Height="26" Padding="8,2" Margin="0" FontSize="11">
+                                                <Button.Style>
+                                                    <Style TargetType="Button" BasedOn="{StaticResource ModernButtonStyle}">
+                                                        <Setter Property="Content" Value="Deaktivieren"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsEnabled}" Value="False">
+                                                                <Setter Property="Content" Value="Aktivieren"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Button.Style>
+                                            </Button>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </Grid>
+                </Grid>
+
+                <!-- Tab 6: Daten-Wiederherstellung (Recovery-Center) -->
+                <Grid>
+                    <Grid.Style>
+                        <Style TargetType="Grid">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsChecked, ElementName=NavRecovery}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Grid.Style>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/> <!-- Header -->
+                        <RowDefinition Height="Auto"/> <!-- Controls / Settings Card -->
+                        <RowDefinition Height="*"/>    <!-- Results DataGrid -->
+                        <RowDefinition Height="Auto"/> <!-- Action Footer -->
+                    </Grid.RowDefinitions>
+
+                    <!-- Header -->
+                    <StackPanel Grid.Row="0" Margin="0,0,0,15">
+                        <TextBlock Text="Daten-Wiederherstellung" Foreground="White" FontSize="22" FontWeight="Light" Margin="0,0,0,4"/>
+                        <TextBlock Text="Dateisystem nach gelöschten Dateien scannen und sicher in das Zielverzeichnis wiederherstellen" Foreground="#4D9EFF" FontSize="12"/>
+                    </StackPanel>
+
+                    <!-- Settings Cards (Drive, Filters & Target Folder) -->
+                    <StackPanel Grid.Row="1" Margin="0,0,0,15">
+                        <!-- Card 1: Scan-Modus & Laufwerksauswahl -->
+                        <Border Background="#1A1C23" CornerRadius="6" Padding="15" Margin="0,0,0,15">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <!-- Scan Mode Selection -->
+                                <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,15" VerticalAlignment="Center">
+                                    <TextBlock Text="Scan-Modus:" Style="{StaticResource CardTitle}" FontSize="13" VerticalAlignment="Center" Margin="0,0,20,0"/>
+                                    <RadioButton Content="Schnell-Scan (Index-Basiert)" 
+                                                 IsChecked="{Binding IsQuickScanMode}" 
+                                                 Style="{StaticResource PremiumRadioButtonStyle}" 
+                                                 Margin="0,0,25,0"
+                                                 VerticalAlignment="Center"/>
+                                    <RadioButton Content="Tiefen-Scan (TestDisk Sektoren-Methode)" 
+                                                 IsChecked="{Binding IsDeepScanMode}" 
+                                                 Style="{StaticResource PremiumRadioButtonStyle}"
+                                                 VerticalAlignment="Center"/>
+                                </StackPanel>
+
+                                <!-- Drive Selection and Scan Button -->
+                                <Grid Grid.Row="1">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="220"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <!-- Drive Selection -->
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Text="Ziellaufwerk auswählen" Style="{StaticResource CardTitle}" FontSize="13" Margin="0,0,0,8"/>
+                                        <ComboBox ItemsSource="{Binding AvailableDrives}" 
+                                                  SelectedItem="{Binding SelectedDrive}"
+                                                  Style="{StaticResource PremiumComboBoxStyle}"
+                                                  Height="38" VerticalContentAlignment="Center"/>
+                                    </StackPanel>
+
+                                    <!-- Scan Button -->
+                                    <Button Grid.Column="2" Content="⚡ Scan starten" 
+                                            Command="{Binding ScanRecoveryCommand}"
+                                            Style="{StaticResource ModernButtonStyle}" 
+                                            Width="180" Height="38" VerticalAlignment="Bottom"/>
+                                </Grid>
+                            </Grid>
+                        </Border>
+
+                        <!-- Card 2: Dateitypen-Filter -->
+                        <Border Background="#1A1C23" CornerRadius="6" Padding="15" Margin="0,0,0,15">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="Dateitypen-Filter:" Style="{StaticResource CardTitle}" FontSize="13" VerticalAlignment="Center" Margin="0,0,25,0"/>
+                                <CheckBox Content="Dokumente (.docx, .pdf, ...)" IsChecked="{Binding SearchDocs}" Style="{StaticResource PremiumCheckBoxStyle}" Margin="0,0,25,0" VerticalAlignment="Center"/>
+                                <CheckBox Content="Bilder (.jpg, .png, ...)" IsChecked="{Binding SearchImages}" Style="{StaticResource PremiumCheckBoxStyle}" Margin="0,0,25,0" VerticalAlignment="Center"/>
+                                <CheckBox Content="Videos (.mp4, .mkv, ...)" IsChecked="{Binding SearchVideos}" Style="{StaticResource PremiumCheckBoxStyle}" Margin="0,0,25,0" VerticalAlignment="Center"/>
+                                <CheckBox Content="Musik (.mp3, .wav, ...)" IsChecked="{Binding SearchMusic}" Style="{StaticResource PremiumCheckBoxStyle}" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Card 3: Zielordner-Auswahl (Speichern unter) -->
+                        <Border Background="#1A1C23" CornerRadius="6" Padding="15" Margin="0,0,0,15">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+
+                                <TextBlock Grid.Column="0" Text="Speichern unter:" Foreground="#C2C5CC" FontSize="13" VerticalAlignment="Center" Margin="0,0,15,0"/>
+
+                                <TextBox Grid.Column="1" Style="{StaticResource ModernTextBoxStyle}"
+                                         Text="{Binding TargetRecoveryFolder}"
+                                         IsReadOnly="True"
+                                         Height="38" VerticalContentAlignment="Center"
+                                         VerticalAlignment="Center"/>
+
+                                <Button Grid.Column="2" Content="..."
+                                        Command="{Binding SelectFolderCommand}"
+                                        Style="{StaticResource ModernButtonStyle}"
+                                        Width="50" Height="38" Margin="10,0,0,0"
+                                        VerticalAlignment="Center"/>
+                            </Grid>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- Results DataGrid -->
+                    <DataGrid Grid.Row="2" Style="{StaticResource PremiumDataGridStyle}"
+                              ItemsSource="{Binding FilteredRecoverableFiles}"
+                              FocusVisualStyle="{x:Null}"
+                              Margin="0,0,0,15">
+                        <DataGrid.Columns>
+                            <DataGridTemplateColumn Width="90" CanUserResize="False">
+                                <DataGridTemplateColumn.Header>
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <CheckBox IsChecked="{Binding DataContext.IsAllFilesSelected, RelativeSource={RelativeSource AncestorType=DataGrid}}" 
+                                                  Style="{StaticResource PremiumCheckBoxStyle}"
+                                                  VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                        <TextBlock Text="Alle" Foreground="#FFFFFF" FontWeight="Bold" VerticalAlignment="Center" FontSize="14"/>
+                                    </StackPanel>
+                                </DataGridTemplateColumn.Header>
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" 
+                                                  HorizontalAlignment="Center" VerticalAlignment="Center" 
+                                                  Style="{StaticResource PremiumCheckBoxStyle}"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTextColumn Header="Dateiname" Binding="{Binding Name}" Width="250" />
+                            <DataGridTextColumn Header="Typ" Binding="{Binding FileType}" Width="100" />
+                            <DataGridTextColumn Header="Original-Pfad" Binding="{Binding OriginalPath}" Width="*" />
+                            <DataGridTextColumn Header="Löschdatum" Binding="{Binding DateDeleted}" Width="150" />
+                            <DataGridTextColumn Header="Größe" Binding="{Binding Size}" Width="100" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+
+                    <!-- Action Footer -->
+                    <Border Grid.Row="3" Background="#1A1C23" BorderBrush="#22252D" BorderThickness="1" CornerRadius="8" Padding="15,12">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            
+                            <TextBlock Grid.Column="0" VerticalAlignment="Center" Foreground="#808590" FontSize="12">
+                                <Run Text="Hinweis: Die geretteten Dateien werden im Verzeichnis "/>
+                                <Run Text="{Binding TargetRecoveryFolder, Mode=OneWay}" Foreground="#4D9EFF" FontWeight="SemiBold"/>
+                                <Run Text=" abgelegt."/>
+                            </TextBlock>
+                            
+                            <Button Grid.Column="1" Content="🛡️  Ausgewählte Dateien wiederherstellen" 
+                                    Command="{Binding RestoreCommand}" 
+                                    Style="{StaticResource ModernButtonStyle}" 
+                                    Width="300" Height="38" Margin="10,0,0,0" />
+                        </Grid>
+                    </Border>
                 </Grid>
             </Grid>
 

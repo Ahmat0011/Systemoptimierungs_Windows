@@ -1,9 +1,10 @@
+using System;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 
 namespace SystemOptimierer.Models
 {
-    public class SoftwareItem : INotifyPropertyChanged
+    public class RecoverableFile : INotifyPropertyChanged
     {
         private bool _isSelected;
         public bool IsSelected
@@ -20,14 +21,11 @@ namespace SystemOptimierer.Models
         }
 
         public string Name { get; set; } = string.Empty;
-        public string Publisher { get; set; } = string.Empty;
-        public string DisplayVersion { get; set; } = string.Empty;
-        public string UninstallString { get; set; } = string.Empty;
-        public string InstallDate { get; set; } = string.Empty;
-        public string EstimatedSize { get; set; } = string.Empty;
-        public string RegistryPath { get; set; } = string.Empty;
-        public bool IsUwp { get; set; }
-        public string PackageFullName { get; set; } = string.Empty;
+        public string OriginalPath { get; set; } = string.Empty;
+        public string Size { get; set; } = string.Empty;
+        public string DateDeleted { get; set; } = string.Empty;
+        public string FileType { get; set; } = string.Empty; // "Dokumente", "Bilder", "Videos", "Musik"
+        public string SourcePath { get; set; } = string.Empty;
 
         public event PropertyChangedEventHandler? PropertyChanged;
         protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)

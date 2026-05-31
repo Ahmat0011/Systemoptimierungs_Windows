@@ -1,0 +1,37 @@
+                    </TabControl>
+                </Grid>
+
+                <!-- Tab 5: System-Leistung -->
+                <Grid>
+                    <Grid.Style>
+                        <Style TargetType="Grid">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsChecked, ElementName=NavPerformance}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Grid.Style>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/> <!-- Header -->
+                        <RowDefinition Height="Auto"/> <!-- RAM Card -->
+                        <RowDefinition Height="*"/>    <!-- Autostart Card/Grid -->
+                    </Grid.RowDefinitions>
+
+                    <!-- Header -->
+                    <StackPanel Grid.Row="0" Margin="0,0,0,15">
+                        <TextBlock Text="System-Leistung" Foreground="White" FontSize="22" FontWeight="Light" Margin="0,0,0,4"/>
+                        <TextBlock Text="Arbeitsspeicher sicher optimieren und Autostart-Programme kontrollieren" Foreground="#4D9EFF" FontSize="12"/>
+                    </StackPanel>
+
+                    <!-- RAM Card -->
+                    <Border Grid.Row="1" Style="{StaticResource CardStyle}" Margin="0,0,0,15">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Arbeitsspeicher-Booster" Sty
+<truncated 6136 bytes>

@@ -21,8 +21,12 @@ namespace SystemOptimierer
             var repairService      = new RepairService(commandService);
             var cleanupService     = new CleanupService(commandService, powerShellService);
             var uninstallerService = new UninstallerService(commandService, powerShellService);
+            var storageService     = new StorageService();
+            var performanceService = new PerformanceService();
+            var recoveryService    = new RecoveryService();
+            var deepRecoveryService = new DeepRecoveryService();
 
-            DataContext = new MainViewModel(updateService, driverService, repairService, cleanupService, uninstallerService);
+            DataContext = new MainViewModel(updateService, driverService, repairService, cleanupService, uninstallerService, storageService, performanceService, recoveryService, deepRecoveryService);
         }
 
         // Title Bar Drag Logic
@@ -42,9 +46,17 @@ namespace SystemOptimierer
         private void BtnMaximize_Click(object sender, RoutedEventArgs e)
         {
             if (this.WindowState == WindowState.Maximized)
+            {
                 this.WindowState = WindowState.Normal;
+                this.MaxHeight = double.PositiveInfinity;
+                this.MaxWidth = double.PositiveInfinity;
+            }
             else
+            {
+                this.MaxHeight = SystemParameters.WorkArea.Height;
+                this.MaxWidth = SystemParameters.WorkArea.Width;
                 this.WindowState = WindowState.Maximized;
+            }
         }
 
         private void BtnClose_Click(object sender, RoutedEventArgs e)

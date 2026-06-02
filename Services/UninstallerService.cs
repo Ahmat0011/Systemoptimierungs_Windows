@@ -207,6 +207,15 @@ Get-AppxProvisionedPackage -Online | Where-Object {{ $_.DisplayName -eq $AppName
                     log($"[Fehler] Bei der Datei-Reste-Bereinigung: {ex.Message}");
                 }
                 
+                try
+                {
+                    CleanShortcutsAndIconCache(item, log);
+                }
+                catch (Exception ex)
+                {
+                    log($"[Fehler] Bei der Shortcut-Bereinigung: {ex.Message}");
+                }
+                
                 if (!item.IsUwp)
                 {
                     try
@@ -684,6 +693,177 @@ Get-AppxProvisionedPackage -Online | Where-Object {{ $_.DisplayName -eq $AppName
                     // Ignoriere Zugriffsfehler auf Registry-Stämmen
                 }
             }
+        }
+
+        private void CleanShortcutsAndIconCache(SoftwareItem item, Action<string> log)
+        {
+            log("[Shortcutbereinigung] Suche nach verbliebenen Verknüpfungen und Icons...");
+            
+            var searchPaths = new List<string>();
+
+            // 1. Desktop: Public & User
+            searchPaths.Add(@"C:\Users\Public\Desktop");
+            try
+            {
+                searchPaths.Add(Environment.GetFolderPath(Environment.SpecialFolder.Desktop));
+                searchPaths.Add(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory));
+            }
+            catch { }
+
+            // 2. Startmenü: User & All Users
+            try
+            {
+                searchPaths.Add(Environment.GetFolderPath(Environment.SpecialFolder.StartMenu));
+                searchPaths.Add(Environment.GetFolderPath(Environment.SpecialFolder.Programs));
+                searchPaths.Add(Environment.GetFolderPath(Environment.SpecialFolder.CommonStartMenu));
+                searchPaths.Add(Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms));
+            }
+            catch { }
+
+            // 3. Application Shortcuts
+            try
+            {
+                string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                if (!string.IsNullOrEmpty(localAppData))
+                {
+                    searchPaths.Add(Path.Combine(localAppData, @"Microsoft\Windows\Application Shortcuts"));
+                }
+            }
+            catch { }
+
+            // Bereinigen, Duplikate filtern, Vorhandene filtern
+            searchPaths = searchPaths
+                .Where(p => !string.IsNullOrEmpty(p))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Where(Directory.Exists)
+                .ToList();
+
+            var appKeywords = ExtractKeywords(item.Name);
+            if (appKeywords.Count == 0 && string.IsNullOrWhiteSpace(item.Name))
+                return;
+
+            // Suche nach Verknüpfungsdateien (lnk, url, ico)
+            foreach (var dir in searchPaths)
+            {
+                try
+                {
+                    var files = Directory.GetFiles(dir, "*.*", SearchOption.AllDirectories);
+                    foreach (var file in files)
+                    {
+                        try
+                        {
+                            string ext = Path.GetExtension(file).ToLowerInvariant();
+                            if (ext != ".lnk" && ext != ".url" && ext != ".ico")
+                                continue;
+
+                            string fileName = Path.GetFileNameWithoutExtension(file);
+                            if (IsShortcutMatch(fileName, item.Name, appKeywords))
+                            {
+                                log($"[Shortcutbereinigung] Verknüpfung/Icon gelöscht: {file}");
+                                File.Delete(file);
+                            }
+                        }
+                        catch
+                        {
+                            // Ignoriere Dateizugriffsfehler beim Löschen einzelner Dateien
+                        }
+                    }
+                }
+                catch
+                {
+                    // Ignoriere Zugriffsfehler beim Auflisten von Ordnern
+                }
+            }
+
+            // Lokalen Icon-Cache des Programms bereinigen
+            try
+            {
+                string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                if (!string.IsNullOrEmpty(localAppData) && !string.IsNullOrWhiteSpace(item.Name))
+                {
+                    // UWP Apps
+                    if (item.IsUwp && !string.IsNullOrEmpty(item.PackageFullName))
+                    {
+                        string packageFamilyName = item.PackageFullName.Split('_')[0];
+                        string packagePath = Path.Combine(localAppData, "Packages");
+                        if (Directory.Exists(packagePath))
+                        {
+                            foreach (var pDir in Directory.GetDirectories(packagePath))
+                            {
+                                if (pDir.Contains(packageFamilyName, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    string iconCachePath = Path.Combine(pDir, "LocalCache");
+                                    if (Directory.Exists(iconCachePath))
+                                    {
+                                        log($"[Shortcutbereinigung] Lokaler Cache-Ordner der UWP-App gelöscht: {iconCachePath}");
+                                        Directory.Delete(iconCachePath, true);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Temp Verzeichnis
+                    string tempPath = Path.GetTempPath();
+                    if (Directory.Exists(tempPath))
+                    {
+                        var tempFiles = Directory.GetFiles(tempPath, "*.*", SearchOption.TopDirectoryOnly);
+                        foreach (var tf in tempFiles)
+                        {
+                            try
+                            {
+                                string tfName = Path.GetFileName(tf).ToLowerInvariant();
+                                if ((tfName.Contains("icon") || tfName.Contains("cache")) && 
+                                    IsShortcutMatch(Path.GetFileNameWithoutExtension(tf), item.Name, appKeywords))
+                                {
+                                    log($"[Shortcutbereinigung] Temporärer Icon-Cache gelöscht: {tf}");
+                                    File.Delete(tf);
+                                }
+                            }
+                            catch { }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                log($"[Shortcutbereinigung] Fehler im lokalen Icon-Cache-Scan: {ex.Message}");
+            }
+        }
+
+        private bool IsShortcutMatch(string fileName, string appName, List<string> appKeywords)
+        {
+            if (string.IsNullOrWhiteSpace(fileName) || string.IsNullOrWhiteSpace(appName))
+                return false;
+
+            fileName = fileName.Trim();
+            appName = appName.Trim();
+
+            if (fileName.Equals(appName, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            if (appName.Length >= 4 && fileName.Contains(appName, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            if (fileName.Length >= 4 && appName.Contains(fileName, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            if (appKeywords != null && appKeywords.Count > 0)
+            {
+                bool allKeywordsMatch = true;
+                foreach (var kw in appKeywords)
+                {
+                    if (kw.Length >= 3 && !fileName.Contains(kw, StringComparison.OrdinalIgnoreCase))
+                    {
+                        allKeywordsMatch = false;
+                        break;
+                    }
+                }
+                if (allKeywordsMatch)
+                    return true;
+            }
+
+            return false;
         }
 
         private List<string> ExtractKeywords(string text)

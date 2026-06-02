@@ -1306,7 +1306,7 @@
                     </StackPanel>
 
                     <!-- Results DataGrid -->
-                    <DataGrid Grid.Row="2" Style="{StaticResource PremiumDataGridStyle}"
+                    <DataGrid x:Name="RecoveryDataGrid" Grid.Row="2" Style="{StaticResource PremiumDataGridStyle}"
                               ItemsSource="{Binding FilteredRecoverableFiles}"
                               FocusVisualStyle="{x:Null}"
                               Margin="0,0,0,15">
@@ -1314,7 +1314,7 @@
                             <DataGridTemplateColumn Width="90" CanUserResize="False">
                                 <DataGridTemplateColumn.Header>
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                        <CheckBox IsChecked="{Binding DataContext.IsAllFilesSelected, RelativeSource={RelativeSource AncestorType=DataGrid}}" 
+                                        <CheckBox IsChecked="{Binding Path=DataContext.IsAllFilesSelected, ElementName=RecoveryDataGrid, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" 
                                                   Style="{StaticResource PremiumCheckBoxStyle}"
                                                   VerticalAlignment="Center" Margin="0,0,6,0"/>
                                         <TextBlock Text="Alle" Foreground="#FFFFFF" FontWeight="Bold" VerticalAlignment="Center" FontSize="14"/>

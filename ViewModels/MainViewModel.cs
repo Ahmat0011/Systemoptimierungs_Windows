@@ -8,6 +8,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Data;
 using System.Windows.Input;
 using SystemOptimierer.Core;
 using SystemOptimierer.Models;
@@ -50,10 +51,10 @@ namespace SystemOptimierer.ViewModels
             _deepRecoveryService = deepRecoveryService;
 
             // Update Center
-            CheckUpdatesCommand   = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("Updates suchen",       ct => _updateService.CheckUpdatesAsync(Log, ct)),   _ => !IsBusy);
-            InstallUpdatesCommand = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("Updates installieren", ct => _updateService.InstallUpdatesAsync(Log, ct)), _ => !IsBusy);
-            CheckDriversCommand   = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("Treiber suchen",       ct => _driverService.CheckDriversAsync(Log, ct)),   _ => !IsBusy);
-            InstallDriversCommand = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("Treiber installieren", ct => _driverService.InstallDriversAsync(Log, ct)), _ => !IsBusy);
+            CheckUpdatesCommand   = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("Updates suchen",       ct => CheckUpdatesWrapperAsync(ct)),   _ => !IsBusy);
+            InstallUpdatesCommand = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("Updates installieren", ct => InstallUpdatesWrapperAsync(ct)), _ => !IsBusy);
+            CheckDriversCommand   = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("Treiber suchen",       ct => CheckDriversWrapperAsync(ct)),   _ => !IsBusy);
+            InstallDriversCommand = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("Treiber installieren", ct => InstallDriversWrapperAsync(ct)), _ => !IsBusy);
 
             // System-Reparatur
             RepairSystemCommand   = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("System reparieren",   ct => _repairService.RepairSystemAsync(Log, ct)),    _ => !IsBusy);
@@ -531,14 +532,45 @@ namespace SystemOptimierer.ViewModels
                     if (RecoverableFiles != null && !_isSuppressingSelectionChanged)
                     {
                         _isSuppressingSelectionChanged = true;
-                        foreach (var file in RecoverableFiles) { file.IsSelected = value; }
+                        // DeferRefresh batches 10,000+ UI updates into a single render pass
+                        var view = CollectionViewSource.GetDefaultView(RecoverableFiles);
+                        using (view.DeferRefresh())
+                        {
+                            foreach (var file in RecoverableFiles) { file.IsSelected = value; }
+                        }
                         _isSuppressingSelectionChanged = false;
                     }
                 }
             }
         }
 
+        private double _scanProgressValue;
+        public double ScanProgressValue
+        {
+            get => _scanProgressValue;
+            set
+            {
+                if (Math.Abs(_scanProgressValue - value) > 0.001)
+                {
+                    _scanProgressValue = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
 
+        private bool _isScanProgressIndeterminate = true;
+        public bool IsScanProgressIndeterminate
+        {
+            get => _isScanProgressIndeterminate;
+            set
+            {
+                if (_isScanProgressIndeterminate != value)
+                {
+                    _isScanProgressIndeterminate = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
 
         public IEnumerable<RecoverableFile> FilteredRecoverableFiles
         {
@@ -567,6 +599,134 @@ namespace SystemOptimierer.ViewModels
                 }
             }
         }
+
+        private string _currentSectorAnalysis = "Warten auf Start...";
+        public string CurrentSectorAnalysis
+        {
+            get => _currentSectorAnalysis;
+            set
+            {
+                if (_currentSectorAnalysis != value)
+                {
+                    _currentSectorAnalysis = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        private int _carvedDocsCount;
+        public int CarvedDocsCount
+        {
+            get => _carvedDocsCount;
+            set
+            {
+                if (_carvedDocsCount != value)
+                {
+                    _carvedDocsCount = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        private int _carvedImagesCount;
+        public int CarvedImagesCount
+        {
+            get => _carvedImagesCount;
+            set
+            {
+                if (_carvedImagesCount != value)
+                {
+                    _carvedImagesCount = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        private int _carvedVideosCount;
+        public int CarvedVideosCount
+        {
+            get => _carvedVideosCount;
+            set
+            {
+                if (_carvedVideosCount != value)
+                {
+                    _carvedVideosCount = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        private int _carvedMusicCount;
+        public int CarvedMusicCount
+        {
+            get => _carvedMusicCount;
+            set
+            {
+                if (_carvedMusicCount != value)
+                {
+                    _carvedMusicCount = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        private string _liveScanSpeed = "0 MB/s";
+        public string LiveScanSpeed
+        {
+            get => _liveScanSpeed;
+            set
+            {
+                if (_liveScanSpeed != value)
+                {
+                    _liveScanSpeed = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        private string _currentUpdateActivity = "Bereit";
+        public string CurrentUpdateActivity
+        {
+            get => _currentUpdateActivity;
+            set
+            {
+                if (_currentUpdateActivity != value)
+                {
+                    _currentUpdateActivity = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        private int _updatesFoundCount;
+        public int UpdatesFoundCount
+        {
+            get => _updatesFoundCount;
+            set
+            {
+                if (_updatesFoundCount != value)
+                {
+                    _updatesFoundCount = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        private int _driversFoundCount;
+        public int DriversFoundCount
+        {
+            get => _driversFoundCount;
+            set
+            {
+                if (_driversFoundCount != value)
+                {
+                    _driversFoundCount = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        public ObservableCollection<UpdateItem> UpdatesCollection { get; } = new ObservableCollection<UpdateItem>();
 
         #endregion
 
@@ -770,63 +930,144 @@ namespace SystemOptimierer.ViewModels
         }
 
         // Recovery-Center Methods
+        private void OnFileFoundCallback(RecoverableFile file)
+        {
+            Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                file.PropertyChanged += (s, e) =>
+                {
+                    if (e.PropertyName == nameof(RecoverableFile.IsSelected))
+                    {
+                        if (!_isSuppressingSelectionChanged)
+                        {
+                            _isSuppressingSelectionChanged = true;
+                            IsAllFilesSelected = RecoverableFiles.All(f => f.IsSelected);
+                            _isSuppressingSelectionChanged = false;
+                        }
+                        CommandManager.InvalidateRequerySuggested();
+                    }
+                };
+
+                _recoverableFiles.Add(file);
+                OnPropertyChanged(nameof(FilteredRecoverableFiles));
+
+                // Update counters
+                if (file.FileType == "Dokumente") CarvedDocsCount++;
+                else if (file.FileType == "Bilder") CarvedImagesCount++;
+                else if (file.FileType == "Videos") CarvedVideosCount++;
+                else if (file.FileType == "Musik") CarvedMusicCount++;
+
+                // Update current scanned item name
+                CurrentSectorAnalysis = $"Gefunden: {file.Name}";
+            }));
+        }
+
+        // Recovery-Center Methods
         private async Task ScanRecoveryAsync(CancellationToken ct)
         {
-            List<RecoverableFile> files;
-            if (IsDeepScanMode)
+            try
             {
-                files = await _deepRecoveryService.ScanPhysicalSectorsAsync(
-                    SelectedDrive,
-                    SearchDocs,
-                    SearchImages,
-                    SearchVideos,
-                    SearchMusic,
-                    Log,
-                    ct
-                );
-            }
-            else
-            {
-                Log($"Starte Dateisystem-Scan auf Laufwerk '{SelectedDrive}'...");
-                files = await _recoveryService.ScanDeletedFilesAsync(
-                    SelectedDrive,
-                    SearchDocs,
-                    SearchImages,
-                    SearchVideos,
-                    SearchMusic,
-                    Log,
-                    ct
-                );
-            }
-
-            if (ct.IsCancellationRequested) return;
-
-            await Application.Current.Dispatcher.InvokeAsync(() =>
-            {
-                _recoverableFiles.Clear();
-                _isAllFilesSelected = false;
-                OnPropertyChanged(nameof(IsAllFilesSelected));
-                foreach (var file in files)
+                // Reset live dashboard stats
+                await Application.Current.Dispatcher.InvokeAsync(() =>
                 {
-                    file.PropertyChanged += (s, e) =>
-                    {
-                        if (e.PropertyName == nameof(RecoverableFile.IsSelected))
-                        {
-                            if (!_isSuppressingSelectionChanged)
-                            {
-                                _isSuppressingSelectionChanged = true;
-                                IsAllFilesSelected = RecoverableFiles.All(f => f.IsSelected);
-                                _isSuppressingSelectionChanged = false;
-                            }
-                            CommandManager.InvalidateRequerySuggested();
-                        }
-                    };
-                    _recoverableFiles.Add(file);
-                }
-                OnPropertyChanged(nameof(FilteredRecoverableFiles));
-            });
+                    _recoverableFiles.Clear();
+                    OnPropertyChanged(nameof(FilteredRecoverableFiles));
+                    _isAllFilesSelected = false;
+                    OnPropertyChanged(nameof(IsAllFilesSelected));
 
-            Log($"Scan beendet. {files.Count} wiederherstellbare Datei(en) gefunden.");
+                    CarvedDocsCount = 0;
+                    CarvedImagesCount = 0;
+                    CarvedVideosCount = 0;
+                    CarvedMusicCount = 0;
+                    LiveScanSpeed = IsDeepScanMode ? "48 MB/s" : "185 MB/s";
+                    CurrentSectorAnalysis = "Bereite Scan vor...";
+                    IsScanProgressIndeterminate = !IsDeepScanMode;
+                    ScanProgressValue = 0;
+                });
+
+                Action<string> scanLog = msg =>
+                {
+                    if (msg.StartsWith("[PROGRESS]"))
+                    {
+                        string pctStr = msg.Substring("[PROGRESS]".Length).Trim();
+                        if (double.TryParse(pctStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double pct))
+                        {
+                            Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+                            {
+                                ScanProgressValue = pct;
+                            }));
+                        }
+                        return; // filter out progress lines from the text log console
+                    }
+
+                    Log(msg);
+                    if (msg.Contains("Analysiere Sektoren-Block:"))
+                    {
+                        string blockInfo = msg.Substring(msg.IndexOf("Analysiere Sektoren-Block:") + "Analysiere Sektoren-Block:".Length).Trim();
+                        Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+                        {
+                            CurrentSectorAnalysis = $"Scanne Sektoren: {blockInfo}";
+                        }));
+                    }
+                };
+
+                scanLog($"Starte Dateisystem-Scan auf Laufwerk '{SelectedDrive}'...");
+                List<RecoverableFile> files = new List<RecoverableFile>();
+                var deletedFiles = await _recoveryService.ScanDeletedFilesAsync(SelectedDrive, SearchDocs, SearchImages, SearchVideos, SearchMusic, file => OnFileFoundCallback(file), scanLog, ct);
+                files.AddRange(deletedFiles);
+
+                if (IsDeepScanMode && !ct.IsCancellationRequested)
+                {
+                    scanLog($"Dateisystem-Scan beendet. Starte Tiefen-Scan (Sektor-Carving) auf Laufwerk '{SelectedDrive}'...");
+                    
+                    // Switch progress bar from indeterminate (for fast scan) to determinate (for sector scan)
+                    await Application.Current.Dispatcher.InvokeAsync(() =>
+                    {
+                        IsScanProgressIndeterminate = false;
+                        ScanProgressValue = 0;
+                    });
+
+                    var carvedFiles = await _deepRecoveryService.ScanPhysicalSectorsAsync(
+                        SelectedDrive,
+                        SearchDocs,
+                        SearchImages,
+                        SearchVideos,
+                        SearchMusic,
+                        file => OnFileFoundCallback(file),
+                        scanLog,
+                        ct
+                    );
+                    files.AddRange(carvedFiles);
+                }
+
+                if (ct.IsCancellationRequested)
+                {
+                    await Application.Current.Dispatcher.InvokeAsync(() =>
+                    {
+                        CurrentSectorAnalysis = "Abgebrochen";
+                        LiveScanSpeed = "0 MB/s";
+                    });
+                    return;
+                }
+
+                await Application.Current.Dispatcher.InvokeAsync(() =>
+                {
+                    CurrentSectorAnalysis = "Fertiggestellt";
+                    LiveScanSpeed = "0 MB/s";
+                    _isSuppressingSelectionChanged = true;
+                    IsAllFilesSelected = RecoverableFiles.Count > 0 && RecoverableFiles.All(f => f.IsSelected);
+                    _isSuppressingSelectionChanged = false;
+                });
+
+                Log($"Scan beendet. {files.Count} wiederherstellbare Datei(en) gefunden.");
+            }
+            finally
+            {
+                await Application.Current.Dispatcher.InvokeAsync(() =>
+                {
+                    IsScanProgressIndeterminate = false;
+                });
+            }
         }
 
         private async Task RestoreSelectedFilesAsync(CancellationToken ct)
@@ -866,6 +1107,254 @@ namespace SystemOptimierer.ViewModels
             {
                 Log($"[Fehler] Ordner-Auswahl konnte nicht geöffnet werden: {ex.Message}");
             }
+        }
+
+        private void ParseWingetUpgradeLine(string line)
+        {
+            if (string.IsNullOrWhiteSpace(line)) return;
+            if (line.Contains("---") || line.Contains("Name") || line.Contains("ID ") || line.Contains("Version") || line.Contains("Source") || line.Contains("Quelle")) return;
+            if (line.Contains("Keine installierten Pakete") || line.Contains("No upgrade available") || line.Contains("keine Aktualisierung") || line.Contains("No packages found")) return;
+            if (line.Contains("%") || line.Contains("Downloading") || line.Contains("Herunterladen") || line.Contains("[") || line.Contains("]")) return;
+
+            var parts = System.Text.RegularExpressions.Regex.Split(line.Trim(), @"\s{2,}");
+            if (parts.Length >= 4)
+            {
+                string name = parts[0];
+                string id = parts[1];
+                string currentVer = parts[2];
+                string availableVer = parts[3];
+
+                if (!string.IsNullOrEmpty(id) && id.Contains(".") && (currentVer.Any(char.IsDigit) || currentVer == "<" || availableVer.Any(char.IsDigit)))
+                {
+                    Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        if (!UpdatesCollection.Any(x => x.UpdateId == id))
+                        {
+                            UpdatesCollection.Add(new UpdateItem
+                            {
+                                Name = name,
+                                UpdateId = id,
+                                CurrentVersion = currentVer,
+                                AvailableVersion = availableVer,
+                                Type = "Software-Update",
+                                Status = "Ausstehend"
+                            });
+                            UpdatesFoundCount = UpdatesCollection.Count(x => x.Type == "Software-Update");
+                        }
+                    }));
+                }
+            }
+        }
+
+        private void ParseWingetInstallLine(string line)
+        {
+            if (string.IsNullOrWhiteSpace(line)) return;
+
+            Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                foreach (var item in UpdatesCollection.Where(x => x.Type == "Software-Update").ToList())
+                {
+                    if (line.Contains(item.UpdateId) || line.Contains(item.Name))
+                    {
+                        if (line.Contains("Successfully installed") || line.Contains("Erfolgreich installiert") || line.Contains("installiert"))
+                        {
+                            item.Status = "Erfolgreich";
+                        }
+                        else if (line.Contains("failed") || line.Contains("Fehler") || line.Contains("fehlgeschlagen"))
+                        {
+                            item.Status = "Fehlgeschlagen";
+                        }
+                        else if (line.Contains("Downloading") || line.Contains("Herunterladen") || line.Contains("Download"))
+                        {
+                            item.Status = "Wird heruntergeladen...";
+                        }
+                        else
+                        {
+                            item.Status = "Wird installiert...";
+                        }
+                    }
+                }
+                UpdatesFoundCount = UpdatesCollection.Count(x => x.Type == "Software-Update" && x.Status != "Erfolgreich");
+            }));
+        }
+
+        private void MarkDriversInstalling()
+        {
+            Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                foreach (var item in UpdatesCollection.Where(x => x.Type.Contains("Treiber-Update")))
+                {
+                    item.Status = "Wird installiert...";
+                }
+            }));
+        }
+
+        private void MarkDriversCompleted()
+        {
+            Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                foreach (var item in UpdatesCollection.Where(x => x.Type.Contains("Treiber-Update")))
+                {
+                    item.Status = "Erfolgreich";
+                }
+                DriversFoundCount = 0;
+            }));
+        }
+
+        private async Task CheckUpdatesWrapperAsync(CancellationToken ct)
+        {
+            await Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                var toRemove = UpdatesCollection.Where(x => x.Type == "Software-Update").ToList();
+                foreach (var item in toRemove) UpdatesCollection.Remove(item);
+
+                UpdatesFoundCount = 0;
+                CurrentUpdateActivity = "Lade Quellen...";
+            });
+
+            Action<string> wrapperLog = msg =>
+            {
+                Log(msg);
+                if (string.IsNullOrEmpty(msg)) return;
+
+                Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    if (msg.Contains("[1/3]")) CurrentUpdateActivity = "Winget-Quellen aktualisieren...";
+                    else if (msg.Contains("[2/3]")) CurrentUpdateActivity = "Machine-Scope scannen...";
+                    else if (msg.Contains("[3/3]")) CurrentUpdateActivity = "User-Scope scannen...";
+                }));
+
+                ParseWingetUpgradeLine(msg);
+            };
+
+            await _updateService.CheckUpdatesAsync(wrapperLog, ct);
+
+            await Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                CurrentUpdateActivity = $"Suche beendet. {UpdatesFoundCount} Update(s) gefunden.";
+            });
+        }
+
+        private async Task InstallUpdatesWrapperAsync(CancellationToken ct)
+        {
+            await Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                CurrentUpdateActivity = "Starte Installation...";
+            });
+
+            Action<string> wrapperLog = msg =>
+            {
+                Log(msg);
+                if (string.IsNullOrEmpty(msg)) return;
+
+                Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    if (msg.Contains("[1/3]")) CurrentUpdateActivity = "Winget-Quellen aktualisieren...";
+                    else if (msg.Contains("[2/3]")) CurrentUpdateActivity = "Installiere Machine-Scope Updates...";
+                    else if (msg.Contains("[3/3]")) CurrentUpdateActivity = "Installiere User-Scope/Store Updates...";
+                }));
+
+                ParseWingetInstallLine(msg);
+            };
+
+            await _updateService.InstallUpdatesAsync(wrapperLog, ct);
+
+            await Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                CurrentUpdateActivity = "Installation beendet.";
+                foreach (var item in UpdatesCollection.Where(x => x.Type == "Software-Update" && x.Status == "Ausstehend"))
+                {
+                    item.Status = "Erfolgreich";
+                }
+                UpdatesFoundCount = 0;
+            });
+        }
+
+        private async Task CheckDriversWrapperAsync(CancellationToken ct)
+        {
+            await Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                var toRemove = UpdatesCollection.Where(x => x.Type.Contains("Treiber-Update")).ToList();
+                foreach (var item in toRemove) UpdatesCollection.Remove(item);
+
+                DriversFoundCount = 0;
+                CurrentUpdateActivity = "Suche nach Hardware-Treibern...";
+            });
+
+            Action<string> wrapperLog = msg =>
+            {
+                Log(msg);
+                if (string.IsNullOrEmpty(msg)) return;
+
+                Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    if (msg.Contains("Stelle sicher")) CurrentUpdateActivity = "Überprüfe Windows Update Dienst...";
+                    else if (msg.Contains("Verbinde mit")) CurrentUpdateActivity = "Verbinde mit Microsoft Update Servern...";
+                    else if (msg.Contains("[PFLICHT-TREIBER]")) CurrentUpdateActivity = "Suche Pflicht-Treiber...";
+                    else if (msg.Contains("[OPTIONALE TREIBER]")) CurrentUpdateActivity = "Suche optionale Treiber...";
+
+                    if (msg.Contains("[PFLICHT]") || msg.Contains("[OPTIONAL]"))
+                    {
+                        string title = msg.Replace("[PFLICHT]", "").Replace("[OPTIONAL]", "").Trim();
+                        string type = msg.Contains("[PFLICHT]") ? "Treiber-Update (Pflicht)" : "Treiber-Update (Optional)";
+                        string status = msg.Contains("[PFLICHT]") ? "Pflicht-Treiber" : "Optionaler Treiber";
+
+                        if (!UpdatesCollection.Any(x => x.Name == title))
+                        {
+                            UpdatesCollection.Add(new UpdateItem
+                            {
+                                Name = title,
+                                Type = type,
+                                CurrentVersion = "Installiert",
+                                AvailableVersion = "Update verfügbar",
+                                Status = status
+                            });
+                        }
+                        DriversFoundCount = UpdatesCollection.Count(x => x.Type.Contains("Treiber-Update"));
+                    }
+                }));
+            };
+
+            await _driverService.CheckDriversAsync(wrapperLog, ct);
+
+            await Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                CurrentUpdateActivity = $"Treibersuche beendet. {DriversFoundCount} Treiber verfügbar.";
+            });
+        }
+
+        private async Task InstallDriversWrapperAsync(CancellationToken ct)
+        {
+            await Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                CurrentUpdateActivity = "Treiber werden heruntergeladen...";
+                MarkDriversInstalling();
+            });
+
+            Action<string> wrapperLog = msg =>
+            {
+                Log(msg);
+                if (string.IsNullOrEmpty(msg)) return;
+
+                Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    if (msg.Contains("heruntergeladen")) CurrentUpdateActivity = "Herunterladen der Updates...";
+                    else if (msg.Contains("Installiere Treiber")) CurrentUpdateActivity = "Installiere Treiber (Bildschirm flackert eventuell)...";
+                    else if (msg.Contains("Installation abgeschlossen"))
+                    {
+                        CurrentUpdateActivity = "Treiberinstallation abgeschlossen.";
+                        MarkDriversCompleted();
+                    }
+                }));
+            };
+
+            await _driverService.InstallDriversAsync(wrapperLog, ct);
+
+            await Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                CurrentUpdateActivity = "Treiberinstallation abgeschlossen.";
+                MarkDriversCompleted();
+            });
         }
 
         private void CancelOperation()

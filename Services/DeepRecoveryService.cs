@@ -12,6 +12,8 @@ namespace SystemOptimierer.Services
 {
     public class DeepRecoveryService : IDeepRecoveryService
     {
+        private readonly IRecoveryService _recoveryService;
+
         // P/Invoke definitions for raw sector access
         [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Auto)]
         private static extern SafeFileHandle CreateFile(
@@ -27,6 +29,11 @@ namespace SystemOptimierer.Services
         private const uint FILE_SHARE_READ = 0x00000001;
         private const uint FILE_SHARE_WRITE = 0x00000002;
         private const uint OPEN_EXISTING = 3;
+
+        public DeepRecoveryService(IRecoveryService recoveryService)
+        {
+            _recoveryService = recoveryService;
+        }
 
         public List<string> GetPhysicalDrives()
         {
@@ -86,134 +93,20 @@ namespace SystemOptimierer.Services
             bool includeImages,
             bool includeVideos,
             bool includeMusic,
+            Action<RecoverableFile> onFileFound,
             Action<string> logCallback,
             CancellationToken ct)
         {
-            var files = new List<RecoverableFile>();
-            
-            // Clean physical drive name (extracting only the raw device ID like \\.\PhysicalDrive0)
-            string driveId = physicalDrive;
-            if (physicalDrive.Contains(" ("))
-            {
-                driveId = physicalDrive.Substring(0, physicalDrive.IndexOf(" ("));
-            }
-
-            logCallback($"[INFO] Öffne direkten Sektorkanal zu '{driveId}' (Erfordert Admin-Rechte)...");
-
-            bool realReadSuccessful = false;
-            try
-            {
-                // Try performing a real Win32 sector read to be fully native and compliant
-                using (SafeFileHandle handle = CreateFile(driveId, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, IntPtr.Zero, OPEN_EXISTING, 0, IntPtr.Zero))
-                {
-                    if (!handle.IsInvalid)
-                    {
-                        logCallback("[SUCCESS] Sektor-Kanal erfolgreich geöffnet. Starte nativen Sektor-Scan...");
-                        realReadSuccessful = true;
-                        
-                        using (FileStream fs = new FileStream(handle, FileAccess.Read))
-                        {
-                            byte[] sector = new byte[512];
-                            // Try to read first few sectors blockwise to verify read works
-                            int bytesRead = await fs.ReadAsync(sector, 0, sector.Length, ct);
-                            logCallback($"[SUCCESS] Sektor 0 gelesen ({bytesRead} Bytes). Analysiere Boot-Sektor Signaturen...");
-                            
-                            // Check for standard MBR boot signature (0x55AA at end of sector)
-                            if (bytesRead >= 512 && sector[510] == 0x55 && sector[511] == 0xAA)
-                            {
-                                logCallback("[INFO] Gültige MBR-Boot-Signatur (0x55AA) in Sektor 0 gefunden!");
-                            }
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                logCallback($"[WARNUNG] Nativer Kanal gesperrt oder unzureichende Rechte: {ex.Message}");
-                logCallback("[INFO] Wechsle in den TestDisk-Sektor-Simulationskanal (Fallback)...");
-            }
-
-            // We perform a highly realistic TestDisk-like sector scanning output and file carving simulation
-            logCallback("[TestDisk-Scan] Starte Analyse der Partitionstabellen-Strukturen...");
-            await Task.Delay(400, ct);
-
-            int totalSectors = 1000000;
-            int step = 20000;
-            Random rand = new Random();
-
-            for (int i = 0; i <= totalSectors; i += step)
-            {
-                if (ct.IsCancellationRequested)
-                {
-                    logCallback("[ABGEBROCHEN] Sektor-Scan abgebrochen.");
-                    return files;
-                }
-
-                logCallback($"Analysiere Sektoren-Block: {i:N0} bis {i + step:N0}...");
-                await Task.Delay(200, ct); // Realistic speed
-
-                // Simulated discoveries
-                if (i == 100000 && includeDocs)
-                {
-                    logCallback("-> [GEFUNDEN] Dokumenten-Header (.pdf) bei Sektor 104200 gefunden!");
-                    files.Add(new RecoverableFile
-                    {
-                        Name = "Reconstructed_Report.pdf",
-                        FileType = "Dokumente",
-                        Size = "1.4 MB",
-                        OriginalPath = $@"{driveId}\Sector_104200.pdf",
-                        DateDeleted = DateTime.Now.AddDays(-rand.Next(1, 10)).ToString("dd.MM.yyyy HH:mm"),
-                        SourcePath = "Physisches Laufwerk (Deep Sector)"
-                    });
-                }
-                else if (i == 260000 && includeImages)
-                {
-                    logCallback("-> [GEFUNDEN] JPEG-Dateisignatur (JFIF) bei Sektor 265400 gefunden!");
-                    files.Add(new RecoverableFile
-                    {
-                        Name = "Reconstructed_Photo_1.jpg",
-                        FileType = "Bilder",
-                        Size = "3.2 MB",
-                        OriginalPath = $@"{driveId}\Sector_265400.jpg",
-                        DateDeleted = DateTime.Now.AddDays(-rand.Next(1, 10)).ToString("dd.MM.yyyy HH:mm"),
-                        SourcePath = "Physisches Laufwerk (Deep Sector)"
-                    });
-                }
-                else if (i == 480000 && includeVideos)
-                {
-                    logCallback("-> [GEFUNDEN] MP4-Videocontainer bei Sektor 489120 gefunden!");
-                    files.Add(new RecoverableFile
-                    {
-                        Name = "Reconstructed_Video_C.mp4",
-                        FileType = "Videos",
-                        Size = "45.7 MB",
-                        OriginalPath = $@"{driveId}\Sector_489120.mp4",
-                        DateDeleted = DateTime.Now.AddDays(-rand.Next(1, 10)).ToString("dd.MM.yyyy HH:mm"),
-                        SourcePath = "Physisches Laufwerk (Deep Sector)"
-                    });
-                }
-                else if (i == 720000 && includeMusic)
-                {
-                    logCallback("-> [GEFUNDEN] MP3-Audiodatenstrom bei Sektor 723410 gefunden!");
-                    files.Add(new RecoverableFile
-                    {
-                        Name = "Reconstructed_Song.mp3",
-                        FileType = "Musik",
-                        Size = "5.1 MB",
-                        OriginalPath = $@"{driveId}\Sector_723410.mp3",
-                        DateDeleted = DateTime.Now.AddDays(-rand.Next(1, 10)).ToString("dd.MM.yyyy HH:mm"),
-                        SourcePath = "Physisches Laufwerk (Deep Sector)"
-                    });
-                }
-            }
-
-            if (realReadSuccessful)
-            {
-                logCallback("[SUCCESS] Nativer Sektor-Scan erfolgreich abgeschlossen.");
-            }
-
-            logCallback($"[Tiefen-Scan] Scan beendet. {files.Count} rekonstruierte Datei(en) im physischen Sektorcarving gefunden.");
-            return files;
+            // Delegate physical sector carving directly to our newly implemented carving logic in RecoveryService
+            return await _recoveryService.ScanPhysicalSectorsAsync(
+                physicalDrive,
+                includeDocs,
+                includeImages,
+                includeVideos,
+                includeMusic,
+                onFileFound,
+                logCallback,
+                ct);
         }
     }
 }

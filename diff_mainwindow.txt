@@ -1,0 +1,489 @@
+﻿diff --git a/MainWindow.xaml b/MainWindow.xaml
+index 2ebcc9d..42d35d9 100644
+--- a/MainWindow.xaml
++++ b/MainWindow.xaml
+@@ -521,6 +521,60 @@
+             </Setter>
+         </Style>
+ 
++        <!-- ===================== RECOVERY ACCENTS ===================== -->
++        <Style TargetType="Border" x:Key="RecoveryCardStyle">
++            <Setter Property="Background" Value="#0A0B0E"/>
++            <Setter Property="BorderBrush" Value="#007ACC"/>
++            <Setter Property="BorderThickness" Value="1.5"/>
++            <Setter Property="CornerRadius" Value="8"/>
++            <Setter Property="Padding" Value="15"/>
++            <Setter Property="Margin" Value="0,0,0,15"/>
++            <Setter Property="Effect">
++                <Setter.Value>
++                    <DropShadowEffect Color="#007ACC" BlurRadius="12" Opacity="0.45" ShadowDepth="0"/>
++                </Setter.Value>
++            </Setter>
++        </Style>
++
++        <Style TargetType="CheckBox" x:Key="HeaderCheckBoxStyle">
++            <Setter Property="Foreground" Value="White"/>
++            <Setter Property="FontSize" Value="13"/>
++            <Setter Property="VerticalAlignment" Value="Center"/>
++            <Setter Property="Cursor" Value="Hand"/>
++            <Setter Property="Template">
++                <Setter.Value>
++                    <ControlTemplate TargetType="CheckBox">
++                        <BulletDecorator Background="Transparent">
++                            <BulletDecorator.Bullet>
++                                <Border x:Name="border" Width="20" Height="20"
++                                        Background="#262930" BorderBrush="#808590"
++                                        BorderThickness="1.5" CornerRadius="4"
++                                        VerticalAlignment="Center">
++                                    <Grid>
++                                        <TextBlock x:Name="checkMark" Text="✓"
++                                                   Foreground="White" FontSize="14"
++                                                   FontWeight="Bold" HorizontalAlignment="Center"
++                                                   VerticalAlignment="Center" Visibility="Collapsed"/>
++                                    </Grid>
++                                </Border>
++                            </BulletDecorator.Bullet>
++                            <ContentPresenter Margin="8,0,0,0" VerticalAlignment="Center"/>
++                        </BulletDecorator>
++                        <ControlTemplate.Triggers>
++                            <Trigger Property="IsChecked" Value="True">
++                                <Setter TargetName="checkMark" Property="Visibility" Value="Visible"/>
++                                <Setter TargetName="border" Property="BorderBrush" Value="White"/>
++                                <Setter TargetName="border" Property="Background" Value="#3D424F"/>
++                            </Trigger>
++                            <Trigger Property="IsMouseOver" Value="True">
++                                <Setter TargetName="border" Property="BorderBrush" Value="White"/>
++                            </Trigger>
++                        </ControlTemplate.Triggers>
++                    </ControlTemplate>
++                </Setter.Value>
++            </Setter>
++        </Style>
++
+         <!-- ===================== CHECKBOX ===================== -->
+         <Style TargetType="CheckBox" x:Key="PremiumCheckBoxStyle">
+             <Setter Property="Foreground" Value="#C8CBCF"/>
+@@ -836,36 +890,107 @@
+                             </Style.Triggers>
+                         </Style>
+                     </ScrollViewer.Style>
+-                    <StackPanel>
+-                        <TextBlock Text="Update Center" Foreground="White" FontSize="22" FontWeight="Light" Margin="0,0,0,4"/>
+-                        <TextBlock Text="Software- und Treiber-Updates — Deep-Scan über alle Scopes" Foreground="#4D9EFF" FontSize="12" Margin="0,0,0,22"/>
++                    <Grid>
++                        <Grid.RowDefinitions>
++                            <RowDefinition Height="Auto"/>
++                            <RowDefinition Height="Auto"/>
++                            <RowDefinition Height="*"/>
++                        </Grid.RowDefinitions>
+ 
+-                        <!-- Software Updates -->
+-                        <Border Style="{StaticResource CardStyle}">
+-                            <StackPanel>
+-                                <TextBlock Text="Software Updates (Stabil)" Style="{StaticResource CardTitle}"/>
+-                                <TextBlock Style="{StaticResource CardDesc}"
+-                                           Text="Deep-Scan über Machine-Scope, User-Scope und MS Store. Findet alle offiziellen stabilen Updates – keine Alpha/Beta-Versionen."/>
+-                                <StackPanel Orientation="Horizontal">
+-                                    <Button Content="🔍  Updates suchen"    Command="{Binding CheckUpdatesCommand}"   Style="{StaticResource ModernButtonStyle}" Width="170"/>
+-                                    <Button Content="⬇  Updates installieren" Command="{Binding InstallUpdatesCommand}" Style="{StaticResource ModernButtonStyle}" Width="185"/>
++                        <!-- Header -->
++                        <StackPanel Grid.Row="0">
++                            <TextBlock Text="Update Center" Foreground="White" FontSize="22" FontWeight="Light" Margin="0,0,0,4"/>
++                            <TextBlock Text="Software- und Treiber-Updates — Deep-Scan über alle Scopes" Foreground="#4D9EFF" FontSize="12" Margin="0,0,0,22"/>
++                        </StackPanel>
++
++                        <!-- Side-by-Side Cards -->
++                        <Grid Grid.Row="1" Margin="0,0,0,15">
++                            <Grid.ColumnDefinitions>
++                                <ColumnDefinition Width="*"/>
++                                <ColumnDefinition Width="15"/>
++                                <ColumnDefinition Width="*"/>
++                            </Grid.ColumnDefinitions>
++                            
++                            <!-- Software Updates Card -->
++                            <Border Grid.Column="0" Style="{StaticResource CardStyle}" Margin="0">
++                                <StackPanel>
++                                    <TextBlock Text="Software Updates (Stabil)" Style="{StaticResource CardTitle}"/>
++                                    <TextBlock Style="{StaticResource CardDesc}" Height="45" TextWrapping="Wrap"
++                                               Text="Deep-Scan über Machine-Scope, User-Scope und MS Store. Findet alle offiziellen stabilen Updates."/>
++                                    <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
++                                        <Button Content="🔍  Updates suchen"    Command="{Binding CheckUpdatesCommand}"   Style="{StaticResource ModernButtonStyle}" FontSize="12" Padding="12,6" Width="140" Margin="0,0,8,0"/>
++                                        <Button Content="⬇  Installieren" Command="{Binding InstallUpdatesCommand}" Style="{StaticResource ModernButtonStyle}" FontSize="12" Padding="12,6" Width="120" Margin="0"/>
++                                    </StackPanel>
+                                 </StackPanel>
+-                            </StackPanel>
+-                        </Border>
++                            </Border>
+ 
+-                        <!-- Treiber Updates -->
+-                        <Border Style="{StaticResource CardStyle}">
+-                            <StackPanel>
+-                                <TextBlock Text="Hardware Treiber Updates (Microsoft)" Style="{StaticResource CardTitle}"/>
+-                                <TextBlock Style="{StaticResource CardDesc}"
+-                                           Text="Deep-Scan über die offizielle Microsoft Update COM-API. Findet WHQL-zertifizierte Pflicht-Treiber UND optionale Hardware-Updates (Intel, Nvidia, Realtek, AMD) die vom Standard-Scan oft ignoriert werden."/>
+-                                <StackPanel Orientation="Horizontal">
+-                                    <Button Content="🔍  Treiber suchen"    Command="{Binding CheckDriversCommand}"   Style="{StaticResource ModernButtonStyle}" Width="160"/>
+-                                    <Button Content="⬇  Treiber installieren" Command="{Binding InstallDriversCommand}" Style="{StaticResource ModernButtonStyle}" Width="185"/>
++                            <!-- Hardware Drivers Card -->
++                            <Border Grid.Column="2" Style="{StaticResource CardStyle}" Margin="0">
++                                <StackPanel>
++                                    <TextBlock Text="Hardware Treiber Updates" Style="{StaticResource CardTitle}"/>
++                                    <TextBlock Style="{StaticResource CardDesc}" Height="45" TextWrapping="Wrap"
++                                               Text="Deep-Scan über die offizielle Microsoft Update COM-API. Findet Pflicht- und optionale Hardware-Treiber."/>
++                                    <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
++                                        <Button Content="🔍  Treiber suchen"    Command="{Binding CheckDriversCommand}"   Style="{StaticResource ModernButtonStyle}" FontSize="12" Padding="12,6" Width="140" Margin="0,0,8,0"/>
++                                        <Button Content="⬇  Installieren" Command="{Binding InstallDriversCommand}" Style="{StaticResource ModernButtonStyle}" FontSize="12" Padding="12,6" Width="120" Margin="0"/>
++                                    </StackPanel>
+                                 </StackPanel>
+-                            </StackPanel>
+-                        </Border>
+-                    </StackPanel>
++                            </Border>
++                        </Grid>
++
++                        <!-- Updates DataGrid -->
++                        <DataGrid Grid.Row="2" Style="{StaticResource PremiumDataGridStyle}"
++                                  ItemsSource="{Binding UpdatesCollection}"
++                                  FocusVisualStyle="{x:Null}"
++                                  Margin="0,0,0,10"
++                                  AutoGenerateColumns="False"
++                                  IsReadOnly="True"
++                                  MaxHeight="450">
++                            <DataGrid.Columns>
++                                <DataGridTextColumn Header="Update / Treiber Name" Binding="{Binding Name}" Width="*" />
++                                <DataGridTextColumn Header="Typ" Binding="{Binding Type}" Width="160" />
++                                <DataGridTextColumn Header="Aktuell" Binding="{Binding CurrentVersion}" Width="100" />
++                                <DataGridTextColumn Header="Verfügbar" Binding="{Binding AvailableVersion}" Width="100" />
++                                <DataGridTemplateColumn Header="Status" Width="130">
++                                    <DataGridTemplateColumn.CellTemplate>
++                                        <DataTemplate>
++                                            <TextBlock VerticalAlignment="Center" HorizontalAlignment="Center" FontWeight="SemiBold">
++                                                <TextBlock.Style>
++                                                    <Style TargetType="TextBlock">
++                                                        <Setter Property="Text" Value="{Binding Status}"/>
++                                                        <Setter Property="Foreground" Value="#E2E2E2"/>
++                                                        <Style.Triggers>
++                                                            <DataTrigger Binding="{Binding Status}" Value="Erfolgreich">
++                                                                <Setter Property="Foreground" Value="#4AF626"/>
++                                                            </DataTrigger>
++                                                            <DataTrigger Binding="{Binding Status}" Value="Fehlgeschlagen">
++                                                                <Setter Property="Foreground" Value="#FF3B30"/>
++                                                            </DataTrigger>
++                                                            <DataTrigger Binding="{Binding Status}" Value="Wird installiert...">
++                                                                <Setter Property="Foreground" Value="#4D9EFF"/>
++                                                            </DataTrigger>
++                                                            <DataTrigger Binding="{Binding Status}" Value="Wird heruntergeladen...">
++                                                                <Setter Property="Foreground" Value="#E5B3FF"/>
++                                                            </DataTrigger>
++                                                            <DataTrigger Binding="{Binding Status}" Value="Pflicht-Treiber">
++                                                                <Setter Property="Foreground" Value="#FFB3B3"/>
++                                                            </DataTrigger>
++                                                            <DataTrigger Binding="{Binding Status}" Value="Optionaler Treiber">
++                                                                <Setter Property="Foreground" Value="#FFCC00"/>
++                                                            </DataTrigger>
++                                                            <DataTrigger Binding="{Binding Status}" Value="Ausstehend">
++                                                                <Setter Property="Foreground" Value="#808590"/>
++                                                            </DataTrigger>
++                                                        </Style.Triggers>
++                                                    </Style>
++                                                </TextBlock.Style>
++                                            </TextBlock>
++                                        </DataTemplate>
++                                    </DataGridTemplateColumn.CellTemplate>
++                                </DataGridTemplateColumn>
++                            </DataGrid.Columns>
++                        </DataGrid>
++                    </Grid>
+                 </ScrollViewer>
+ 
+                 <!-- Tab 2: System-Reparatur -->
+@@ -1221,7 +1346,7 @@
+                     <!-- Settings Cards (Drive, Filters & Target Folder) -->
+                     <StackPanel Grid.Row="1" Margin="0,0,0,15">
+                         <!-- Card 1: Scan-Modus & Laufwerksauswahl -->
+-                        <Border Background="#1A1C23" CornerRadius="6" Padding="15" Margin="0,0,0,15">
++                        <Border Style="{StaticResource RecoveryCardStyle}">
+                             <Grid>
+                                 <Grid.RowDefinitions>
+                                     <RowDefinition Height="Auto"/>
+@@ -1269,7 +1394,7 @@
+                         </Border>
+ 
+                         <!-- Card 2: Dateitypen-Filter -->
+-                        <Border Background="#1A1C23" CornerRadius="6" Padding="15" Margin="0,0,0,15">
++                        <Border Style="{StaticResource RecoveryCardStyle}">
+                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                 <TextBlock Text="Dateitypen-Filter:" Style="{StaticResource CardTitle}" FontSize="13" VerticalAlignment="Center" Margin="0,0,25,0"/>
+                                 <CheckBox Content="Dokumente (.docx, .pdf, ...)" IsChecked="{Binding SearchDocs}" Style="{StaticResource PremiumCheckBoxStyle}" Margin="0,0,25,0" VerticalAlignment="Center"/>
+@@ -1280,7 +1405,7 @@
+                         </Border>
+ 
+                         <!-- Card 3: Zielordner-Auswahl (Speichern unter) -->
+-                        <Border Background="#1A1C23" CornerRadius="6" Padding="15" Margin="0,0,0,15">
++                        <Border Style="{StaticResource RecoveryCardStyle}">
+                             <Grid>
+                                 <Grid.ColumnDefinitions>
+                                     <ColumnDefinition Width="Auto"/>
+@@ -1314,8 +1439,8 @@
+                             <DataGridTemplateColumn Width="90" CanUserResize="False">
+                                 <DataGridTemplateColumn.Header>
+                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+-                                        <CheckBox IsChecked="{Binding Path=DataContext.IsAllFilesSelected, ElementName=RecoveryDataGrid, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" 
+-                                                  Style="{StaticResource PremiumCheckBoxStyle}"
++                                        <CheckBox IsChecked="{Binding DataContext.IsAllFilesSelected, RelativeSource={RelativeSource AncestorType=DataGrid}, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" 
++                                                  Style="{StaticResource HeaderCheckBoxStyle}"
+                                                   VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                         <TextBlock Text="Alle" Foreground="#FFFFFF" FontWeight="Bold" VerticalAlignment="Center" FontSize="14"/>
+                                     </StackPanel>
+@@ -1412,24 +1537,235 @@
+ 
+             <!-- ===== LIVE CONSOLE ===== -->
+             <Border Grid.Row="3" Grid.Column="1" Margin="30,0,30,20"
+-                    Background="#050505" BorderBrush="#2D72D9" BorderThickness="1" CornerRadius="8">
++                    Background="#050505" BorderBrush="#007ACC" BorderThickness="1.5" CornerRadius="8">
++                <Border.Effect>
++                    <DropShadowEffect Color="#007ACC" BlurRadius="8" Opacity="0.35" ShadowDepth="0"/>
++                </Border.Effect>
+                 <Grid>
+-                    <Grid.RowDefinitions>
+-                        <RowDefinition Height="Auto"/>
+-                        <RowDefinition Height="*"/>
+-                    </Grid.RowDefinitions>
+-                    <Border Grid.Row="0" Background="#0C1014" CornerRadius="8,8,0,0" Padding="15,7" BorderBrush="#1C2025" BorderThickness="0,0,0,1">
+-                        <TextBlock Text="▶  LIVE EXECUTION CONSOLE  //  SYSTEM.OVERRIDE"
+-                                   Foreground="#2D72D9" FontSize="10" FontFamily="Consolas" FontWeight="Bold"/>
++                    <!-- Classic Console Container (Visible for other tabs) -->
++                    <Grid x:Name="ClassicConsoleContainer">
++                        <Grid.Style>
++                            <Style TargetType="Grid">
++                                <Setter Property="Visibility" Value="Visible"/>
++                                <Style.Triggers>
++                                    <DataTrigger Binding="{Binding IsChecked, ElementName=NavRecovery}" Value="True">
++                                        <Setter Property="Visibility" Value="Collapsed"/>
++                                    </DataTrigger>
++                                    <DataTrigger Binding="{Binding IsChecked, ElementName=NavUpdates}" Value="True">
++                                        <Setter Property="Visibility" Value="Collapsed"/>
++                                    </DataTrigger>
++                                </Style.Triggers>
++                            </Style>
++                        </Grid.Style>
++                        <Grid.RowDefinitions>
++                            <RowDefinition Height="Auto"/>
++                            <RowDefinition Height="*"/>
++                        </Grid.RowDefinitions>
++
++                        <!-- Header -->
++                        <Border Grid.Row="0" Background="#0C1014" CornerRadius="8,8,0,0" Padding="15,7" BorderBrush="#1C2025" BorderThickness="0,0,0,1">
++                            <Grid>
++                                <TextBlock Text="▶  LIVE EXECUTION CONSOLE  //  SYSTEM.OVERRIDE"
++                                           Foreground="#2D72D9" FontSize="10" FontFamily="Consolas" FontWeight="Bold" VerticalAlignment="Center"/>
++                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
++                                    <TextBlock Text="GESCHWINDIGKEIT: " Foreground="#555A67" FontSize="9" FontFamily="Consolas" FontWeight="Bold"/>
++                                    <TextBlock Text="{Binding LiveScanSpeed}" Foreground="#00FFCC" FontSize="9" FontFamily="Consolas" FontWeight="Bold"/>
++                                </StackPanel>
++                            </Grid>
++                        </Border>
++
++                        <!-- Body (Full-width Text Terminal for classic view) -->
++                        <TextBox Grid.Row="1" x:Name="TxtLog"
++                                 Text="{Binding LogText, Mode=OneWay}"
++                                 IsReadOnly="True" TextWrapping="Wrap"
++                                 VerticalScrollBarVisibility="Auto"
++                                 Background="Transparent" Foreground="#4AF626"
++                                 FontFamily="Consolas" FontSize="11" FontWeight="Medium"
++                                 Margin="12,8,12,8" BorderThickness="0"
++                                 TextChanged="TxtLog_TextChanged"/>
++                    </Grid>
++
++                    <!-- Modern Recovery Dashboard (Visible only when Recovery is active) -->
++                    <Border x:Name="ModernRecoveryDashboard" Padding="25,15"
++                            UseLayoutRounding="True" SnapsToDevicePixels="True" TextOptions.TextFormattingMode="Display">
++                        <Border.Style>
++                            <Style TargetType="Border">
++                                <Setter Property="Visibility" Value="Collapsed"/>
++                                <Style.Triggers>
++                                    <DataTrigger Binding="{Binding IsChecked, ElementName=NavRecovery}" Value="True">
++                                        <Setter Property="Visibility" Value="Visible"/>
++                                    </DataTrigger>
++                                </Style.Triggers>
++                            </Style>
++                        </Border.Style>
++                        <Grid>
++                            <Grid.Resources>
++                                <Storyboard x:Key="ScanRunningPulseStoryboard">
++                                    <DoubleAnimation Storyboard.TargetProperty="Opacity"
++                                                     From="0.3" To="1.0" Duration="0:0:1"
++                                                     AutoReverse="True" RepeatBehavior="Forever"/>
++                                </Storyboard>
++                            </Grid.Resources>
++                            <Grid.RowDefinitions>
++                                <RowDefinition Height="Auto"/>
++                                <RowDefinition Height="*"/>
++                                <RowDefinition Height="Auto"/>
++                            </Grid.RowDefinitions>
++
++                            <!-- Header Info -->
++                            <Grid Grid.Row="0" Margin="0,0,0,10">
++                                <Grid.ColumnDefinitions>
++                                    <ColumnDefinition Width="*"/>
++                                    <ColumnDefinition Width="Auto"/>
++                                </Grid.ColumnDefinitions>
++                                <StackPanel Grid.Column="0">
++                                    <TextBlock Text="MONITOR // SYSTEM.RECOVERY.STATUS"
++                                               Foreground="#00FFCC" FontSize="11" FontFamily="Consolas" FontWeight="Bold"/>
++                                    <TextBlock Text="{Binding CurrentSectorAnalysis}" Foreground="#FFFFFF" FontSize="12" FontFamily="Consolas" Margin="0,2,0,0" TextTrimming="CharacterEllipsis"/>
++                                </StackPanel>
++                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
++                                    <TextBlock Text="DEEP-CARVING ACTIVE" Foreground="#FF3B30" FontSize="10" FontFamily="Consolas" FontWeight="Bold">
++                                        <TextBlock.Style>
++                                            <Style TargetType="TextBlock">
++                                                <Setter Property="Visibility" Value="Collapsed"/>
++                                                <Style.Triggers>
++                                                    <DataTrigger Binding="{Binding IsDeepScanMode}" Value="True">
++                                                        <Setter Property="Visibility" Value="Visible"/>
++                                                    </DataTrigger>
++                                                </Style.Triggers>
++                                            </Style>
++                                        </TextBlock.Style>
++                                    </TextBlock>
++                                </StackPanel>
++                            </Grid>
++
++                            <!-- Centered Counts Grid -->
++                            <UniformGrid Grid.Row="1" Columns="4" Rows="1" VerticalAlignment="Center" Margin="0,5">
++                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
++                                    <TextBlock Text="📄 DOKUMENTE" Foreground="#808590" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center"/>
++                                    <TextBlock Text="{Binding CarvedDocsCount}" Foreground="#4D9EFF" FontSize="26" FontFamily="Consolas" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,4,0,0"/>
++                                </StackPanel>
++
++                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
++                                    <TextBlock Text="🖼️ BILDER" Foreground="#808590" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center"/>
++                                    <TextBlock Text="{Binding CarvedImagesCount}" Foreground="#E5B3FF" FontSize="26" FontFamily="Consolas" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,4,0,0"/>
++                                </StackPanel>
++
++                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
++                                    <TextBlock Text="🎬 VIDEOS" Foreground="#808590" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center"/>
++                                    <TextBlock Text="{Binding CarvedVideosCount}" Foreground="#FFB3B3" FontSize="26" FontFamily="Consolas" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,4,0,0"/>
++                                </StackPanel>
++
++                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
++                                    <TextBlock Text="🎵 AUDIO" Foreground="#808590" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center"/>
++                                    <TextBlock Text="{Binding CarvedMusicCount}" Foreground="#B3FFB3" FontSize="26" FontFamily="Consolas" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,4,0,0"/>
++                                </StackPanel>
++                            </UniformGrid>
++
++                            <!-- Status & Progress -->
++                            <StackPanel Grid.Row="2" Margin="0,10,0,0">
++                                <Grid Margin="0,0,0,4">
++                                    <TextBlock Text="SPEICHER-SEKTOR ANALYSE" Foreground="#555A67" FontSize="9" FontWeight="Bold" HorizontalAlignment="Left"/>
++                                    <TextBlock x:Name="ScanRunningText" Text="SCAN LÄUFT..." Foreground="#00FFCC" FontSize="9" FontWeight="Bold" HorizontalAlignment="Right">
++                                        <TextBlock.Effect>
++                                            <DropShadowEffect Color="#00FFCC" BlurRadius="6" ShadowDepth="0" Opacity="0.8"/>
++                                        </TextBlock.Effect>
++                                        <TextBlock.Style>
++                                            <Style TargetType="TextBlock">
++                                                <Setter Property="Visibility" Value="Collapsed"/>
++                                                <Style.Triggers>
++                                                    <DataTrigger Binding="{Binding IsBusy}" Value="True">
++                                                        <Setter Property="Visibility" Value="Visible"/>
++                                                        <DataTrigger.EnterActions>
++                                                            <BeginStoryboard Name="PulseStory" Storyboard="{StaticResource ScanRunningPulseStoryboard}"/>
++                                                        </DataTrigger.EnterActions>
++                                                        <DataTrigger.ExitActions>
++                                                            <StopStoryboard BeginStoryboardName="PulseStory"/>
++                                                        </DataTrigger.ExitActions>
++                                                    </DataTrigger>
++                                                </Style.Triggers>
++                                            </Style>
++                                        </TextBlock.Style>
++                                    </TextBlock>
++                                </Grid>
++                                <ProgressBar Height="6" 
++                                             IsIndeterminate="{Binding IsScanProgressIndeterminate}" 
++                                             Value="{Binding ScanProgressValue}"
++                                             Style="{StaticResource PremiumProgressBarStyle}">
++                                    <ProgressBar.Effect>
++                                        <DropShadowEffect Color="#00FFCC" BlurRadius="6" ShadowDepth="0" Opacity="0.7"/>
++                                    </ProgressBar.Effect>
++                                </ProgressBar>
++                            </StackPanel>
++                        </Grid>
++                    </Border>
++
++                    <!-- Modern Update Dashboard (Visible only when Updates is active) -->
++                    <Border x:Name="ModernUpdateDashboard" Padding="25,15"
++                            UseLayoutRounding="True" SnapsToDevicePixels="True" TextOptions.TextFormattingMode="Display">
++                        <Border.Style>
++                            <Style TargetType="Border">
++                                <Setter Property="Visibility" Value="Collapsed"/>
++                                <Style.Triggers>
++                                    <DataTrigger Binding="{Binding IsChecked, ElementName=NavUpdates}" Value="True">
++                                        <Setter Property="Visibility" Value="Visible"/>
++                                    </DataTrigger>
++                                </Style.Triggers>
++                            </Style>
++                        </Border.Style>
++                        <Grid>
++                            <Grid.RowDefinitions>
++                                <RowDefinition Height="Auto"/>
++                                <RowDefinition Height="*"/>
++                                <RowDefinition Height="Auto"/>
++                            </Grid.RowDefinitions>
++
++                            <Grid Grid.Row="0" Margin="0,0,0,10">
++                                <TextBlock Text="MONITOR // SYSTEM.UPDATE.STATUS"
++                                           Foreground="#4D9EFF" FontSize="11" FontFamily="Consolas" FontWeight="Bold"/>
++                            </Grid>
++
++                            <UniformGrid Grid.Row="1" Columns="3" Rows="1" VerticalAlignment="Center" Margin="0,5">
++                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
++                                    <TextBlock Text="📦 SOFTWARE-UPDATES" Foreground="#808590" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center"/>
++                                    <TextBlock Text="{Binding UpdatesFoundCount}" Foreground="#4D9EFF" FontSize="26" FontFamily="Consolas" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,4,0,0"/>
++                                </StackPanel>
++
++                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
++                                    <TextBlock Text="🔌 SYSTEM-TREIBER" Foreground="#808590" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center"/>
++                                    <TextBlock Text="{Binding DriversFoundCount}" Foreground="#4AF626" FontSize="26" FontFamily="Consolas" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,4,0,0"/>
++                                </StackPanel>
++
++                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
++                                    <TextBlock Text="⚡ STATUS DER OPERATION" Foreground="#808590" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center"/>
++                                    <TextBlock Text="{Binding CurrentUpdateActivity}" Foreground="#FFFFFF" FontSize="12" FontFamily="Consolas" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,6,0,0" TextWrapping="Wrap" MaxWidth="250" TextTrimming="CharacterEllipsis"/>
++                                </StackPanel>
++                            </UniformGrid>
++
++                            <StackPanel Grid.Row="2" Margin="0,10,0,0">
++                                <Grid Margin="0,0,0,4">
++                                    <TextBlock Text="WINDOWS UPDATE &amp; WINGET SYNCHRONISATION" Foreground="#555A67" FontSize="9" FontWeight="Bold" HorizontalAlignment="Left"/>
++                                    <TextBlock Text="SUCHE / INSTALLATION LÄUFT..." Foreground="#4D9EFF" FontSize="9" FontWeight="Bold" HorizontalAlignment="Right">
++                                        <TextBlock.Style>
++                                            <Style TargetType="TextBlock">
++                                                <Setter Property="Visibility" Value="Collapsed"/>
++                                                <Style.Triggers>
++                                                    <DataTrigger Binding="{Binding IsBusy}" Value="True">
++                                                        <Setter Property="Visibility" Value="Visible"/>
++                                                    </DataTrigger>
++                                                </Style.Triggers>
++                                            </Style>
++                                        </TextBlock.Style>
++                                    </TextBlock>
++                                </Grid>
++                                <ProgressBar Height="6" IsIndeterminate="{Binding IsBusy}" Style="{StaticResource PremiumProgressBarStyle}">
++                                    <ProgressBar.Effect>
++                                        <DropShadowEffect Color="#4D9EFF" BlurRadius="6" ShadowDepth="0" Opacity="0.7"/>
++                                    </ProgressBar.Effect>
++                                </ProgressBar>
++                            </StackPanel>
++                        </Grid>
+                     </Border>
+-                    <TextBox x:Name="TxtLog" Grid.Row="1"
+-                             Text="{Binding LogText, Mode=OneWay}"
+-                             IsReadOnly="True" TextWrapping="Wrap"
+-                             VerticalScrollBarVisibility="Auto"
+-                             Background="Transparent" Foreground="#4AF626"
+-                             FontFamily="Consolas" FontSize="12" FontWeight="Medium"
+-                             Margin="12,8,12,8" BorderThickness="0"
+-                             TextChanged="TxtLog_TextChanged"/>
+                 </Grid>
+             </Border>
+         </Grid>

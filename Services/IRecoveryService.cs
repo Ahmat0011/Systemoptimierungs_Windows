@@ -15,6 +15,7 @@ namespace SystemOptimierer.Services
             bool includeImages,
             bool includeVideos,
             bool includeMusic,
+            Action<RecoverableFile> onFileFound,
             Action<string> log,
             CancellationToken cancellationToken);
         Task RestoreFilesAsync(
@@ -22,5 +23,14 @@ namespace SystemOptimierer.Services
             string targetDirectory,
             Action<string> log,
             CancellationToken cancellationToken);
+        Task<List<RecoverableFile>> ScanPhysicalSectorsAsync(
+            string drivePath,
+            bool includeDocs,
+            bool includeImages,
+            bool includeVideos,
+            bool includeMusic,
+            Action<RecoverableFile> onFileFound,
+            Action<string> logCallback,
+            CancellationToken ct);
     }
 }

@@ -24,7 +24,7 @@ namespace SystemOptimierer
             var storageService     = new StorageService();
             var performanceService = new PerformanceService();
             var recoveryService    = new RecoveryService();
-            var deepRecoveryService = new DeepRecoveryService();
+            var deepRecoveryService = new DeepRecoveryService(recoveryService);
 
             DataContext = new MainViewModel(updateService, driverService, repairService, cleanupService, uninstallerService, storageService, performanceService, recoveryService, deepRecoveryService);
         }

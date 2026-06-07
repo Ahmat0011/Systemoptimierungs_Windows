@@ -24,6 +24,7 @@ namespace SystemOptimierer.Services
             bool includeImages,
             bool includeVideos,
             bool includeMusic,
+            Action<RecoverableFile> onFileFound,
             Action<string> logCallback,
             CancellationToken ct);
     }

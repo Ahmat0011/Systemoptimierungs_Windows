@@ -1,0 +1,130 @@
+--- RecoveryService.cs.orig
++++ RecoveryService.cs
+@@ -360,7 +360,7 @@
+                         for (int offset = 0; offset < (int)bytesRead - 8; offset += 512)
+                         {
+                             if (ct.IsCancellationRequested) break;
+ 
+-                            string? foundExt = MatchCarvingSignatureOffset(buffer, offset, includeDocs, includeImages, includeVideos, includeMusic);
++                            string? foundExt = MatchCarvingSignatureOffset(buffer, offset, (int)bytesRead, includeDocs, includeImages, includeVideos, includeMusic);
+                             if (foundExt != null)
+                             {
+                                 long startOffset = position + offset;
+@@ -477,14 +477,25 @@
+             return ((double)readableCount / limit) >= 0.98;
+         }
+ 
+-        private string? MatchCarvingSignatureOffset(byte[] block, int offset, bool includeDocs, bool includeImages, bool includeVideos, bool includeMusic)
++        private string? MatchCarvingSignatureOffset(byte[] block, int offset, int validBytes, bool includeDocs, bool includeImages, bool includeVideos, bool includeMusic)
+         {
+-            int remaining = block.Length - offset;
++            int remaining = validBytes - offset;
+             if (remaining < 8) return null;
+             if (includeDocs)
+             {
+                 if (block[offset] == 0x25 && block[offset + 1] == 0x50 && block[offset + 2] == 0x44 && block[offset + 3] == 0x46)
+                     return ".pdf";
++
++                // .lnk check (Shell Link Header starts with 0x0000004C, followed by LinkCLSID)
++                if (block[offset] == 0x4C && block[offset + 1] == 0x00 && block[offset + 2] == 0x00 && block[offset + 3] == 0x00)
++                {
++                    if (remaining >= 20 &&
++                        block[offset + 4] == 0x01 && block[offset + 5] == 0x14 && block[offset + 6] == 0x02 && block[offset + 7] == 0x00 &&
++                        block[offset + 16] == 0xC0 && block[offset + 19] == 0x46)
++                    {
++                        return ".lnk";
++                    }
++                }
++
+                 if (block[offset] == 0x50 && block[offset + 1] == 0x4B && block[offset + 2] == 0x03 && block[offset + 3] == 0x04)
+                 {
+                     int searchLimit = Math.Min(remaining, 1024);
+@@ -493,7 +504,36 @@
+                     if (asciiString.Contains("ppt/")) return ".pptx";
+                     return ".docx";
+                 }
+-                if (IsAsciiSector(block, offset)) return ".txt";
++
++                if (IsAsciiSector(block, offset))
++                {
++                    int checkLength = Math.Min(remaining, 128);
++                    string asciiStart = Encoding.ASCII.GetString(block, offset, checkLength).TrimStart();
++                    
++                    if (asciiStart.StartsWith("using System", StringComparison.Ordinal) ||
++                        asciiStart.StartsWith("namespace ", StringComparison.Ordinal) ||
++                        asciiStart.StartsWith("public class ", StringComparison.Ordinal) ||
++                        asciiStart.StartsWith("//") ||
++                        asciiStart.StartsWith("/*"))
++                    {
++                        return ".cs";
++                    }
++                    
++                    if (asciiStart.StartsWith("{") || asciiStart.StartsWith("["))
++                    {
++                        return ".json";
++                    }
++                    
++                    if (asciiStart.StartsWith("<!DOCTYPE html", StringComparison.OrdinalIgnoreCase) ||
++                        asciiStart.StartsWith("<html", StringComparison.OrdinalIgnoreCase))
++                    {
++                        return ".html";
++                    }
++                    
++                    if (asciiStart.Contains("[INFO]") || asciiStart.Contains("[WARN]") || asciiStart.Contains("[ERROR]") || asciiStart.Contains("[DEBUG]"))
++                    {
++                        return ".log";
++                    }
++
++                    return ".txt";
++                }
+             }
+             if (includeImages)
+             {
+@@ -504,6 +544,30 @@
+             {
+                 if (block[offset + 4] == 0x66 && block[offset + 5] == 0x74 && block[offset + 6] == 0x79 && block[offset + 7] == 0x70) return ".mp4";
+             }
++            if (includeMusic)
++            {
++                if (block[offset] == 0x49 && block[offset + 1] == 0x44 && block[offset + 2] == 0x33)
++                    return ".mp3";
++                if (block[offset] == 0xFF && block[offset + 1] == 0xFB)
++                    return ".mp3";
++                
++                if (block[offset] == 0x52 && block[offset + 1] == 0x49 && block[offset + 2] == 0x46 && block[offset + 3] == 0x46)
++                {
++                    if (remaining >= 12 &&
++                        block[offset + 8] == 0x57 && block[offset + 9] == 0x41 && block[offset + 10] == 0x56 && block[offset + 11] == 0x45)
++                    {
++                        return ".wav";
++                    }
++                }
++                
++                if (block[offset] == 0x66 && block[offset + 1] == 0x4C && block[offset + 2] == 0x61 && block[offset + 3] == 0x43)
++                    return ".flac";
++                
++                if (block[offset] == 0x4F && block[offset + 1] == 0x67 && block[offset + 2] == 0x67 && block[offset + 3] == 0x53)
++                    return ".ogg";
++            }
+             return null;
+         }
+ 
+@@ -517,6 +581,17 @@
+                 case ".pdf": return 2500000;
+                 case ".mp4": return 25000000;
+                 case ".docx": return 1200000;
+                 case ".xlsx": return 1500000;
++                case ".pptx": return 2000000;
++                case ".lnk": return 4096;
++                case ".json": return 100000;
++                case ".html": return 200000;
++                case ".cs": return 50000;
++                case ".log": return 1000000;
++                case ".txt": return 100000;
++                case ".mp3": return 6000000;
++                case ".wav": return 30000000;
++                case ".flac": return 20000000;
++                case ".ogg": return 5000000;
+                 default: return 800000;
+             }
+         }

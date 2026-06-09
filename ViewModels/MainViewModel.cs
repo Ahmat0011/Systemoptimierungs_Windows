@@ -1,6 +1,4 @@
-using System;
-using System.Collections.Generic;
-using System.Collections.ObjectModel;
+
 using System.ComponentModel;
 using System.Linq;
 using System.Net.NetworkInformation;
@@ -534,10 +532,10 @@ namespace SystemOptimierer.ViewModels
                         _isSuppressingSelectionChanged = true;
                         // DeferRefresh batches 10,000+ UI updates into a single render pass
                         var view = CollectionViewSource.GetDefaultView(RecoverableFiles);
-                        using (view.DeferRefresh())
-                        {
-                            foreach (var file in RecoverableFiles) { file.IsSelected = value; }
-                        }
+                        using (view.DeferRefresh()) {
+                            foreach (var file in RecoverableFiles)
+                            using (view.DeferRefresh()) {
+                                foreach (var file in RecoverableFiles)
                         _isSuppressingSelectionChanged = false;
                     }
                 }
@@ -1013,14 +1011,19 @@ namespace SystemOptimierer.ViewModels
 
                 scanLog($"Starte Dateisystem-Scan auf Laufwerk '{SelectedDrive}'...");
                 List<RecoverableFile> files = new List<RecoverableFile>();
-                var deletedFiles = await _recoveryService.ScanDeletedFilesAsync(SelectedDrive, SearchDocs, SearchImages, SearchVideos, SearchMusic, file => OnFileFoundCallback(file), scanLog, ct);
-                files.AddRange(deletedFiles);
+                var deletedFiles = // Hybrid-Scan: Zuerst schneller MFT-Scan
+var quickResults = await _recoveryService.ScanDeletedFilesAsync
+// Dann paralleler Tiefenscan
+// Hybrid-Scan: Zuerst schneller MFT-Scan
+var quickResults = await _recoveryService.ScanDeletedFilesAsync(SelectedDrive, SearchDocs, SearchImages, SearchVideos, SearchMusic, file => OnFileFoundCallback(file), scanLog, ct);
+files.AddRange(quickResults);
 
-                if (IsDeepScanMode && !ct.IsCancellationRequested)
-                {
-                    scanLog($"Dateisystem-Scan beendet. Starte Tiefen-Scan (Sektor-Carving) auf Laufwerk '{SelectedDrive}'...");
-                    
-                    // Switch progress bar from indeterminate (for fast scan) to determinate (for sector scan)
+// Dann paralleler Tiefenscan (wenn aktiviert)
+if (IsDeepScanMode && !ct.IsCancellationRequested)
+{
+    var deepResults = await _deepRecoveryService.ScanPhysicalSectorsAsync(SelectedDrive, SearchDocs, SearchImages, SearchVideos, SearchMusic, file => OnFileFoundCallback(file), scanLog, ct);
+    files.AddRange(deepResults);
+}
                     await Application.Current.Dispatcher.InvokeAsync(() =>
                     {
                         IsScanProgressIndeterminate = false;

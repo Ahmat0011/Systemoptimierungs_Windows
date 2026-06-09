@@ -401,8 +401,6 @@ namespace SystemOptimierer.Services
                             log($"[PROGRESS] {progressPercentage:F2}");
                             log($"Analysiere Sektoren-Block: {currentSector:N0} von {(totalSize / 512):N0}...");
                         }
-
-                        await Task.Delay(5, ct);
                     }
                 }
                 catch (Exception ex)
@@ -553,7 +551,7 @@ namespace SystemOptimierer.Services
                 if (block[offset] == 0xFF && block[offset + 1] == 0xFB)
                     return ".mp3";
 
-                if (block[offset] == 0x52 && block[offset + 1] == 0x49 && block[offset + 2] == 0x46 && (block[offset + 3] == 0x48 || block[offset + 3] == 0x46))
+                if (block[offset] == 0x52 && block[offset + 1] == 0x49 && block[offset + 2] == 0x46 && block[offset + 3] == 0x46)
                 {
                     if (remaining >= 12 &&
                         block[offset + 8] == 0x57 && block[offset + 9] == 0x41 && block[offset + 10] == 0x56 && block[offset + 11] == 0x45)

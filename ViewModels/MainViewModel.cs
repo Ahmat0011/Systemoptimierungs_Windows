@@ -15,6 +15,14 @@ namespace SystemOptimierer.ViewModels
 {
     public class MainViewModel : INotifyPropertyChanged
     {
+        // INotifyPropertyChanged Implementierung
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+
         // [Bestehender Code bleibt erhalten...]
 
         // Korrektur für Zeile 543:

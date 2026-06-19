@@ -407,7 +407,8 @@ namespace SystemOptimierer.ViewModels
                 if (combined.Length > MaxLogLength)
                 {
                     // Keep the most recent portion so the log stays responsive
-                    int cutAt = combined.IndexOf('\n', combined.Length - (MaxLogLength / 2));
+                    int startSearch = Math.Max(0, combined.Length - (MaxLogLength / 2));
+                    int cutAt = combined.IndexOf('\n', startSearch);
                     combined = cutAt > 0
                         ? "[... ältere Einträge wurden gekürzt ...]\n" + combined.Substring(cutAt + 1)
                         : message + "\n";

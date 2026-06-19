@@ -7,7 +7,7 @@ namespace SystemOptimierer.Services
 {
     public class CommandExecutionService : ICommandExecutionService
     {
-        public async Task RunCommandAsync(string command, string arguments, Action<string> onOutput, Action<string> onError, CancellationToken cancellationToken)
+        private const int ProcessTerminationTimeoutMs = 5000;
         {
             try
             {
@@ -54,7 +54,7 @@ namespace SystemOptimierer.Services
                             try { process.Kill(entireProcessTree: true); } catch { }
                             // Give the OS a moment to terminate the process and drain the streams
                             // before CancelOutputRead is called in the finally block.
-                            process.WaitForExit(5000);
+                            process.WaitForExit(ProcessTerminationTimeoutMs);
                         }
                         onError?.Invoke("Vorgang wurde abgebrochen.");
                     }

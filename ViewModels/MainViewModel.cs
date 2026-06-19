@@ -397,21 +397,32 @@ namespace SystemOptimierer.ViewModels
 
         #region Methods
 
+        private const int MaxLogLength = 60_000;
+
         private void Log(string message)
         {
             Application.Current.Dispatcher.BeginInvoke(new Action(() =>
             {
-                LogText += $"{message}\n";
+                string combined = LogText + message + "\n";
+                if (combined.Length > MaxLogLength)
+                {
+                    // Keep the most recent portion so the log stays responsive
+                    int cutAt = combined.IndexOf('\n', combined.Length - (MaxLogLength / 2));
+                    combined = cutAt > 0
+                        ? "[... ältere Einträge wurden gekürzt ...]\n" + combined.Substring(cutAt + 1)
+                        : message + "\n";
+                }
+                LogText = combined;
             }));
         }
 
-        private bool IsInternetAvailable()
+        private async Task<bool> IsInternetAvailableAsync()
         {
             try
             {
-                using (Ping ping = new Ping())
+                using (var ping = new Ping())
                 {
-                    PingReply reply = ping.Send("1.1.1.1", 2000);
+                    var reply = await ping.SendPingAsync("1.1.1.1", 2000);
                     return reply.Status == IPStatus.Success;
                 }
             }
@@ -423,7 +434,7 @@ namespace SystemOptimierer.ViewModels
 
         private async Task ExecuteWithBusyStateAsync(string operationName, Func<CancellationToken, Task> action, bool requiresInternet = true)
         {
-            if (requiresInternet && !IsInternetAvailable())
+            if (requiresInternet && !await IsInternetAvailableAsync())
             {
                 Log($"FEHLER: Keine Internetverbindung gefunden! [{operationName}] abgebrochen.\n");
                 return;

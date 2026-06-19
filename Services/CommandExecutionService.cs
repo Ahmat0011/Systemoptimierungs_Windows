@@ -42,26 +42,30 @@ namespace SystemOptimierer.Services
                     try
                     {
                         await process.WaitForExitAsync(cancellationToken);
-                        
-                        // Mandatory: Wait synchronously for remaining event handlers to finish processing the redirected streams
+
+                        // Wait synchronously so that all remaining OutputDataReceived / ErrorDataReceived
+                        // events are fully processed before we leave the using block.
                         process.WaitForExit();
                     }
-                    catch (TaskCanceledException)
+                    catch (OperationCanceledException)
                     {
                         if (!process.HasExited)
                         {
-                            process.Kill(true);
-                            onError?.Invoke("Vorgang wurde abgebrochen.");
+                            try { process.Kill(entireProcessTree: true); } catch { }
+                            // Give the OS a moment to terminate the process and drain the streams
+                            // before CancelOutputRead is called in the finally block.
+                            process.WaitForExit(5000);
                         }
+                        onError?.Invoke("Vorgang wurde abgebrochen.");
                     }
                     finally
                     {
-                        // Clean up process streams
-                        try { process.CancelOutputRead(); } catch {}
-                        try { process.CancelErrorRead(); } catch {}
-                        
-                        try { process.StandardOutput.Close(); } catch {}
-                        try { process.StandardError.Close(); } catch {}
+                        // Stop the async read pumps.  Must be called before Dispose.
+                        // Do NOT call StandardOutput.Close() / StandardError.Close() here –
+                        // touching those streams after BeginOutputReadLine() can throw
+                        // InvalidOperationException and is redundant (Dispose handles it).
+                        try { process.CancelOutputRead(); } catch { }
+                        try { process.CancelErrorRead(); } catch { }
                     }
                 }
             }

@@ -24,7 +24,6 @@ namespace SystemOptimierer.Services
 
         private const uint PROCESS_SET_QUOTA = 0x0100;
         private const uint PROCESS_QUERY_INFORMATION = 0x0400;
-        private const uint PROCESS_ALL_ACCESS = 0x1F0FFF;
 
         public async Task BoostRamAsync(Action<string> log, CancellationToken ct)
         {
@@ -45,10 +44,6 @@ namespace SystemOptimierer.Services
                     initialMem += proc.WorkingSet64;
 
                     IntPtr hProcess = OpenProcess(PROCESS_SET_QUOTA | PROCESS_QUERY_INFORMATION, false, proc.Id);
-                    if (hProcess == IntPtr.Zero)
-                    {
-                        hProcess = OpenProcess(PROCESS_ALL_ACCESS, false, proc.Id);
-                    }
 
                     if (hProcess != IntPtr.Zero)
                     {
@@ -71,6 +66,10 @@ namespace SystemOptimierer.Services
                 {
                     failCount++;
                 }
+                finally
+                {
+                    proc.Dispose();
+                }
             }
 
             log("Speichermanager wird aktualisiert...");
@@ -83,6 +82,10 @@ namespace SystemOptimierer.Services
                     finalMem += proc.WorkingSet64;
                 }
                 catch {}
+                finally
+                {
+                    proc.Dispose();
+                }
             }
 
             long freedBytes = initialMem - finalMem;

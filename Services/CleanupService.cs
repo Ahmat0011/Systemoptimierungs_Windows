@@ -44,8 +44,17 @@ namespace SystemOptimierer.Services
 
             log("[5/6] Windows Update Cache bereinigen...");
             await _cmd.RunCommandAsync("net",  "stop wuauserv /y",                                  log, log, ct);
-            await _cmd.RunCommandAsync("cmd",  @"/c del /q /f /s C:\Windows\SoftwareDistribution\Download\*", log, log, ct);
-            await _cmd.RunCommandAsync("net",  "start wuauserv",                                    log, log, ct);
+            try
+            {
+                if (!ct.IsCancellationRequested)
+                    await _cmd.RunCommandAsync("cmd", @"/c del /q /f /s C:\Windows\SoftwareDistribution\Download\*", log, log, ct);
+            }
+            finally
+            {
+                // Always restart the Windows Update service – even if the operation was cancelled –
+                // so the system is never left with a stopped wuauserv.
+                await _cmd.RunCommandAsync("net", "start wuauserv", log, log, CancellationToken.None);
+            }
 
             if (ct.IsCancellationRequested) return;
 

@@ -8,6 +8,13 @@ namespace SystemOptimierer.Services
     public class CommandExecutionService : ICommandExecutionService
     {
         private const int ProcessTerminationTimeoutMs = 5000;
+
+        public async Task RunCommandAsync(
+            string command,
+            string arguments,
+            Action<string> onOutput,
+            Action<string> onError,
+            CancellationToken cancellationToken)
         {
             try
             {

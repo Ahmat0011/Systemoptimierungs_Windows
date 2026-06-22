@@ -122,7 +122,7 @@ namespace SystemOptimierer.Services
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
             {
                 // Only the per-step timeout fired; log and continue with the next step.
-                log($"[WARNUNG] Schritt hat das Zeitlimit ({timeout.TotalSeconds}s) überschritten und wurde übersprungen.");
+                log($"[WARNUNG] Schritt hat das Zeitlimit ({timeout.TotalSeconds:F0}s) überschritten und wurde übersprungen.");
             }
         }
 

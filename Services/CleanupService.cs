@@ -9,6 +9,9 @@ namespace SystemOptimierer.Services
         private readonly ICommandExecutionService _cmd;
         private readonly IPowerShellService _ps;
 
+        // Per-step timeout – prevents a single stuck sub-command from blocking the whole cleanup.
+        private static readonly TimeSpan DefaultStepTimeout = TimeSpan.FromSeconds(90);
+
         public CleanupService(ICommandExecutionService commandService, IPowerShellService powerShellService)
         {
             _cmd = commandService;
@@ -19,35 +22,64 @@ namespace SystemOptimierer.Services
         {
             log("--- STARTE MASTER-BEREINIGUNG (SICHER & GRÜNDLICH) ---");
 
-            log("[1/6] Lösche temporäre Dateien...");
-            await _cmd.RunCommandAsync("cmd", "/c del /q /f /s %temp%\\*",                          log, log, ct);
-            await _cmd.RunCommandAsync("cmd", @"/c del /q /f /s C:\Windows\Temp\*",                 log, log, ct);
-            await _cmd.RunCommandAsync("cmd", @"/c del /q /f /s D:\Temp\* 2>nul",                   log, log, ct);
+            // [1/6] Temp files
+            // Output is redirected to nul so that per-file deletion messages do not flood
+            // the UI dispatcher and cause the window to appear frozen.
+            log("[1/6] Lösche temporäre Dateien (kann einen Moment dauern)...");
+            await RunWithStepTimeoutAsync(
+                innerCt => _cmd.RunCommandAsync("cmd", @"/c del /q /f /s ""%temp%\*"" > nul 2>&1",           log, log, innerCt),
+                ct, DefaultStepTimeout, log);
+            await RunWithStepTimeoutAsync(
+                innerCt => _cmd.RunCommandAsync("cmd", @"/c del /q /f /s C:\Windows\Temp\* > nul 2>&1",      log, log, innerCt),
+                ct, DefaultStepTimeout, log);
+            await RunWithStepTimeoutAsync(
+                innerCt => _cmd.RunCommandAsync("cmd", @"/c del /q /f /s D:\Temp\* > nul 2>&1",              log, log, innerCt),
+                ct, TimeSpan.FromSeconds(30), log);
+            log("[1/6] \u2713 Temporäre Dateien bereinigt.");
 
             if (ct.IsCancellationRequested) return;
 
+            // [2/6] Recycle bin
             log("[2/6] Leere den Papierkorb auf ALLEN Laufwerken (C: und D:)...");
-            await _ps.RunScriptAsync("Clear-RecycleBin -Force -ErrorAction SilentlyContinue", log, log, ct);
+            await RunWithStepTimeoutAsync(
+                innerCt => _ps.RunScriptAsync("Clear-RecycleBin -Force -ErrorAction SilentlyContinue", log, log, innerCt),
+                ct, DefaultStepTimeout, log);
+            log("[2/6] \u2713 Papierkorb geleert.");
 
             if (ct.IsCancellationRequested) return;
 
+            // [3/6] DirectX shader cache & thumbnails
             log("[3/6] Lösche DirectX-Shadercache & Thumbnails...");
-            await _cmd.RunCommandAsync("cmd", @"/c del /q /f /s %LocalAppData%\Microsoft\Windows\Explorer\thumbcache_*.db", log, log, ct);
-            await _cmd.RunCommandAsync("cmd", @"/c del /q /f /s %LocalAppData%\NVIDIA\DXCache\*",   log, log, ct);
+            await RunWithStepTimeoutAsync(
+                innerCt => _cmd.RunCommandAsync("cmd", @"/c del /q /f /s ""%LocalAppData%\Microsoft\Windows\Explorer\thumbcache_*.db"" > nul 2>&1", log, log, innerCt),
+                ct, DefaultStepTimeout, log);
+            await RunWithStepTimeoutAsync(
+                innerCt => _cmd.RunCommandAsync("cmd", @"/c del /q /f /s ""%LocalAppData%\NVIDIA\DXCache\*"" > nul 2>&1",                           log, log, innerCt),
+                ct, DefaultStepTimeout, log);
+            log("[3/6] \u2713 DirectX-Shadercache & Thumbnails bereinigt.");
 
             if (ct.IsCancellationRequested) return;
 
+            // [4/6] Prefetch files
             log("[4/6] Lösche Prefetch-Dateien...");
-            await _cmd.RunCommandAsync("cmd", @"/c del /q /f /s C:\Windows\Prefetch\*",             log, log, ct);
+            await RunWithStepTimeoutAsync(
+                innerCt => _cmd.RunCommandAsync("cmd", @"/c del /q /f /s C:\Windows\Prefetch\* > nul 2>&1",  log, log, innerCt),
+                ct, DefaultStepTimeout, log);
+            log("[4/6] \u2713 Prefetch-Dateien bereinigt.");
 
             if (ct.IsCancellationRequested) return;
 
+            // [5/6] Windows Update Cache
             log("[5/6] Windows Update Cache bereinigen...");
-            await _cmd.RunCommandAsync("net",  "stop wuauserv /y",                                  log, log, ct);
+            await RunWithStepTimeoutAsync(
+                innerCt => _cmd.RunCommandAsync("net", "stop wuauserv /y", log, log, innerCt),
+                ct, TimeSpan.FromSeconds(30), log);
             try
             {
                 if (!ct.IsCancellationRequested)
-                    await _cmd.RunCommandAsync("cmd", @"/c del /q /f /s C:\Windows\SoftwareDistribution\Download\*", log, log, ct);
+                    await RunWithStepTimeoutAsync(
+                        innerCt => _cmd.RunCommandAsync("cmd", @"/c del /q /f /s C:\Windows\SoftwareDistribution\Download\* > nul 2>&1", log, log, innerCt),
+                        ct, DefaultStepTimeout, log);
             }
             finally
             {
@@ -55,13 +87,43 @@ namespace SystemOptimierer.Services
                 // so the system is never left with a stopped wuauserv.
                 await _cmd.RunCommandAsync("net", "start wuauserv", log, log, CancellationToken.None);
             }
+            log("[5/6] \u2713 Windows Update Cache bereinigt.");
 
             if (ct.IsCancellationRequested) return;
 
+            // [6/6] DNS cache
             log("[6/6] Leere DNS-Cache...");
-            await _cmd.RunCommandAsync("ipconfig", "/flushdns",                                     log, log, ct);
+            await RunWithStepTimeoutAsync(
+                innerCt => _cmd.RunCommandAsync("ipconfig", "/flushdns", log, log, innerCt),
+                ct, TimeSpan.FromSeconds(15), log);
+            log("[6/6] \u2713 DNS-Cache geleert.");
 
             log("--- MASTER-BEREINIGUNG ERFOLGREICH ABGESCHLOSSEN ---");
+        }
+
+        /// <summary>
+        /// Runs <paramref name="operation"/> with a per-step timeout layered on top of
+        /// the caller's <paramref name="ct"/>.  If only the step timeout fires the warning
+        /// is logged and execution continues with the next step.  If the caller's token is
+        /// cancelled the <see cref="OperationCanceledException"/> propagates normally.
+        /// </summary>
+        private static async Task RunWithStepTimeoutAsync(
+            Func<CancellationToken, Task> operation,
+            CancellationToken ct,
+            TimeSpan timeout,
+            Action<string> log)
+        {
+            using var stepCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            stepCts.CancelAfter(timeout);
+            try
+            {
+                await operation(stepCts.Token);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                // Only the per-step timeout fired; log and continue with the next step.
+                log($"[WARNUNG] Schritt hat das Zeitlimit ({timeout.TotalSeconds:F0}s) überschritten und wurde übersprungen.");
+            }
         }
 
         public async Task OptimizeNetworkAsync(Action<string> log, CancellationToken ct)

@@ -52,7 +52,9 @@ namespace SystemOptimierer.Services
 
                         // Wait synchronously so that all remaining OutputDataReceived / ErrorDataReceived
                         // events are fully processed before we leave the using block.
-                        process.WaitForExit();
+                        // A bounded timeout avoids blocking indefinitely when the async reader
+                        // drain takes unexpectedly long.
+                        process.WaitForExit(ProcessTerminationTimeoutMs);
                     }
                     catch (OperationCanceledException)
                     {

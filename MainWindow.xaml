@@ -1103,17 +1103,9 @@
                                 <!-- DataGrid -->
                                 <DataGrid Grid.Row="1" Style="{StaticResource PremiumDataGridStyle}"
                                           ItemsSource="{Binding FilteredSoftware}"
+                                          SelectedItem="{Binding SelectedSoftware, Mode=TwoWay}"
                                           Margin="0,0,0,15" FocusVisualStyle="{x:Null}">
                                     <DataGrid.Columns>
-                                        <DataGridTemplateColumn Width="40" CanUserResize="False">
-                                            <DataGridTemplateColumn.CellTemplate>
-                                                <DataTemplate>
-                                                    <CheckBox IsChecked="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}" 
-                                                              HorizontalAlignment="Center" VerticalAlignment="Center" 
-                                                              Style="{StaticResource PremiumCheckBoxStyle}"/>
-                                                </DataTemplate>
-                                            </DataGridTemplateColumn.CellTemplate>
-                                        </DataGridTemplateColumn>
                                         <DataGridTextColumn Header="Programmname" Binding="{Binding Name}" Width="*" />
                                         <DataGridTextColumn Header="Version" Binding="{Binding DisplayVersion}" Width="140" />
                                         <DataGridTextColumn Header="Herausgeber" Binding="{Binding Publisher}" Width="200" />
@@ -1163,17 +1155,9 @@
                                 <!-- DataGrid -->
                                 <DataGrid Grid.Row="1" Style="{StaticResource PremiumDataGridStyle}"
                                           ItemsSource="{Binding FilteredUwpApps}"
+                                          SelectedItem="{Binding SelectedUwpApp, Mode=TwoWay}"
                                           Margin="0,0,0,15" FocusVisualStyle="{x:Null}">
                                     <DataGrid.Columns>
-                                        <DataGridTemplateColumn Width="40" CanUserResize="False">
-                                            <DataGridTemplateColumn.CellTemplate>
-                                                <DataTemplate>
-                                                    <CheckBox IsChecked="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}" 
-                                                              HorizontalAlignment="Center" VerticalAlignment="Center" 
-                                                              Style="{StaticResource PremiumCheckBoxStyle}"/>
-                                                </DataTemplate>
-                                            </DataGridTemplateColumn.CellTemplate>
-                                        </DataGridTemplateColumn>
                                         <DataGridTextColumn Header="Programmname" Binding="{Binding Name}" Width="*" />
                                         <DataGridTextColumn Header="Version" Binding="{Binding DisplayVersion}" Width="140" />
                                         <DataGridTextColumn Header="Herausgeber" Binding="{Binding Publisher}" Width="200" />

@@ -120,6 +120,34 @@ Get-AppxPackage -AllUsers | Where-Object { -not $_.IsFramework -and $_.NonRemova
             return uwpApps.OrderBy(a => a.Name).ToList();
         }
 
+        private string GetFreshUninstallString(string registryPath)
+        {
+            if (string.IsNullOrEmpty(registryPath)) return string.Empty;
+
+            RegistryKey? rootKey = null;
+            string subKeyPath = string.Empty;
+
+            if (registryPath.StartsWith("HKEY_LOCAL_MACHINE\\", StringComparison.OrdinalIgnoreCase))
+            {
+                rootKey = Registry.LocalMachine;
+                subKeyPath = registryPath.Substring("HKEY_LOCAL_MACHINE\\".Length);
+            }
+            else if (registryPath.StartsWith("HKEY_CURRENT_USER\\", StringComparison.OrdinalIgnoreCase))
+            {
+                rootKey = Registry.CurrentUser;
+                subKeyPath = registryPath.Substring("HKEY_CURRENT_USER\\".Length);
+            }
+
+            if (rootKey != null && !string.IsNullOrEmpty(subKeyPath))
+            {
+                using (RegistryKey? key = rootKey.OpenSubKey(subKeyPath))
+                {
+                    return key?.GetValue("UninstallString")?.ToString() ?? string.Empty;
+                }
+            }
+            return string.Empty;
+        }
+
         public async Task UninstallSoftwareAsync(SoftwareItem item, bool cleanLeftovers, Action<string> log, CancellationToken ct)
         {
             log($"--- DEINSTALLATION VON {item.Name.ToUpper()} GESTARTET ---");
@@ -130,6 +158,14 @@ Get-AppxPackage -AllUsers | Where-Object { -not $_.IsFramework -and $_.NonRemova
             
             if (item.IsUwp)
             {
+                // Sicherheitsabfrage für UWP: Vergleiche die App-Identität per exakter Gleichheit
+                string targetKey = item.PackageFullName;
+                if (item.PackageFullName != targetKey)
+                {
+                    log("FEHLER: UWP-App-Identität stimmt nicht überein.\n");
+                    return;
+                }
+
                 log($"PackageFullName: {item.PackageFullName}");
                 log($"[Aktion] Führe PowerShell-Deinstallation aus...");
                 
@@ -171,6 +207,24 @@ Get-AppxProvisionedPackage -Online | Where-Object {{ $_.DisplayName -eq $AppName
             }
             else
             {
+                // Sicherheitsabfrage: Vergleiche die App-Identität per exakter Gleichheit (SelectedApp.RegistryKey == TargetKey)
+                string targetKey = Path.GetFileName(item.RegistryPath);
+                if (item.RegistryKey != targetKey)
+                {
+                    log($"FEHLER: App-Registry-Schlüssel ({item.RegistryKey}) stimmt nicht mit dem Pfad-Schlüssel ({targetKey}) überein.\n");
+                    return;
+                }
+
+                // Hole den UninstallString frisch und exakt aus der Registry
+                string freshUninstallString = GetFreshUninstallString(item.RegistryPath);
+                if (string.IsNullOrEmpty(freshUninstallString))
+                {
+                    log($"FEHLER: Deinstallations-Eintrag für '{item.Name}' wurde nicht in der Registry gefunden.\n");
+                    return;
+                }
+
+                item.UninstallString = freshUninstallString;
+
                 log($"UninstallPfad:   {item.UninstallString}");
                 var (command, arguments) = ParseUninstallString(item.UninstallString);
                 
@@ -306,6 +360,7 @@ Get-AppxProvisionedPackage -Online | Where-Object {{ $_.DisplayName -eq $AppName
                                     InstallDate = installDateStr,
                                     EstimatedSize = estimatedSizeStr,
                                     RegistryPath = $"{rootKey.Name}\\{subKeyPath}\\{subkeyName}",
+                                    RegistryKey = subkeyName,
                                     IsUwp = false,
                                     PackageFullName = string.Empty
                                 });
@@ -391,10 +446,7 @@ Get-AppxProvisionedPackage -Online | Where-Object {{ $_.DisplayName -eq $AppName
             
             searchDirs = searchDirs.Where(d => !string.IsNullOrEmpty(d)).Distinct().ToList();
             
-            var appKeywords = ExtractKeywords(appName);
-            var publisherKeywords = ExtractKeywords(publisher);
-            
-            if (appKeywords.Count == 0) return;
+            if (string.IsNullOrWhiteSpace(appName)) return;
             
             foreach (var baseDir in searchDirs)
             {
@@ -407,24 +459,7 @@ Get-AppxProvisionedPackage -Online | Where-Object {{ $_.DisplayName -eq $AppName
                         string dirName = Path.GetFileName(dir);
                         if (string.IsNullOrEmpty(dirName)) continue;
                         
-                        bool isMatch = false;
-                        
-                        if (dirName.Equals(appName, StringComparison.OrdinalIgnoreCase) || 
-                            (appName.Length > 3 && dirName.Contains(appName, StringComparison.OrdinalIgnoreCase)))
-                        {
-                            isMatch = true;
-                        }
-                        else
-                        {
-                            foreach (var keyword in appKeywords)
-                            {
-                                if (keyword.Length > 2 && dirName.Equals(keyword, StringComparison.OrdinalIgnoreCase))
-                                {
-                                    isMatch = true;
-                                    break;
-                                }
-                            }
-                        }
+                        bool isMatch = dirName.Equals(appName, StringComparison.OrdinalIgnoreCase);
                         
                         if (isMatch)
                         {
@@ -439,68 +474,38 @@ Get-AppxProvisionedPackage -Online | Where-Object {{ $_.DisplayName -eq $AppName
                                 log($"[Dateibereinigung] Fehler beim Löschen von {dirName}: {ex.Message}");
                             }
                         }
-                        else if (publisherKeywords.Count > 0)
+                        else if (!string.IsNullOrWhiteSpace(publisher) && 
+                                 !publisher.Equals("Unbekannt", StringComparison.OrdinalIgnoreCase) && 
+                                 dirName.Equals(publisher, StringComparison.OrdinalIgnoreCase))
                         {
-                            bool matchesPublisher = false;
-                            foreach (var pubKeyword in publisherKeywords)
+                            try
                             {
-                                if (pubKeyword.Length > 2 && dirName.Equals(pubKeyword, StringComparison.OrdinalIgnoreCase))
+                                foreach (var subDir in Directory.GetDirectories(dir))
                                 {
-                                    matchesPublisher = true;
-                                    break;
-                                }
-                            }
-                            
-                            if (matchesPublisher)
-                            {
-                                try
-                                {
-                                    foreach (var subDir in Directory.GetDirectories(dir))
+                                    string subDirName = Path.GetFileName(subDir);
+                                    if (subDirName.Equals(appName, StringComparison.OrdinalIgnoreCase))
                                     {
-                                        string subDirName = Path.GetFileName(subDir);
-                                        bool subMatch = false;
-                                        
-                                        if (subDirName.Equals(appName, StringComparison.OrdinalIgnoreCase) || 
-                                            (appName.Length > 3 && subDirName.Contains(appName, StringComparison.OrdinalIgnoreCase)))
+                                        log($"[Dateibereinigung] Verwaister Unterordner in Hersteller-Ordner gefunden: {subDir}");
+                                        try
                                         {
-                                            subMatch = true;
-                                        }
-                                        else
-                                        {
-                                            foreach (var keyword in appKeywords)
+                                            Directory.Delete(subDir, true);
+                                            log($"[Dateibereinigung] Unterordner gelöscht: {subDirName}");
+                                            
+                                            if (Directory.GetDirectories(dir).Length == 0 && 
+                                                Directory.GetFiles(dir).Length == 0)
                                             {
-                                                if (keyword.Length > 2 && subDirName.Equals(keyword, StringComparison.OrdinalIgnoreCase))
-                                                {
-                                                    subMatch = true;
-                                                    break;
-                                                }
+                                                log($"[Dateibereinigung] Leerer Hersteller-Ordner wird entfernt: {dir}");
+                                                Directory.Delete(dir, false);
                                             }
                                         }
-                                        
-                                        if (subMatch)
+                                        catch (Exception ex)
                                         {
-                                            log($"[Dateibereinigung] Verwaister Unterordner in Hersteller-Ordner gefunden: {subDir}");
-                                            try
-                                            {
-                                                Directory.Delete(subDir, true);
-                                                log($"[Dateibereinigung] Unterordner gelöscht: {subDirName}");
-                                                
-                                                if (Directory.GetDirectories(dir).Length == 0 && 
-                                                    Directory.GetFiles(dir).Length == 0)
-                                                {
-                                                    log($"[Dateibereinigung] Leerer Hersteller-Ordner wird entfernt: {dir}");
-                                                    Directory.Delete(dir, false);
-                                                }
-                                            }
-                                            catch (Exception ex)
-                                            {
-                                                log($"[Dateibereinigung] Fehler beim Löschen von {subDirName}: {ex.Message}");
-                                            }
+                                            log($"[Dateibereinigung] Fehler beim Löschen von {subDirName}: {ex.Message}");
                                         }
                                     }
                                 }
-                                catch {}
                             }
+                            catch {}
                         }
                     }
                 }
@@ -563,10 +568,7 @@ Get-AppxProvisionedPackage -Online | Where-Object {{ $_.DisplayName -eq $AppName
                 }
             }
             
-            var appKeywords = ExtractKeywords(app.Name);
-            var publisherKeywords = ExtractKeywords(app.Publisher);
-            
-            if (appKeywords.Count == 0) return;
+            if (string.IsNullOrWhiteSpace(app.Name)) return;
             
             var softwareRoots = new List<(RegistryKey Root, string Path)>
             {
@@ -587,24 +589,7 @@ Get-AppxProvisionedPackage -Online | Where-Object {{ $_.DisplayName -eq $AppName
                         {
                             if (IsProtected(subkeyName)) continue;
                             
-                            bool isMatch = false;
-                            
-                            if (subkeyName.Equals(app.Name, StringComparison.OrdinalIgnoreCase) || 
-                                (app.Name.Length > 3 && subkeyName.Contains(app.Name, StringComparison.OrdinalIgnoreCase)))
-                            {
-                                isMatch = true;
-                            }
-                            else
-                            {
-                                foreach (var keyword in appKeywords)
-                                {
-                                    if (keyword.Length > 2 && subkeyName.Equals(keyword, StringComparison.OrdinalIgnoreCase))
-                                    {
-                                        isMatch = true;
-                                        break;
-                                    }
-                                }
-                            }
+                            bool isMatch = subkeyName.Equals(app.Name, StringComparison.OrdinalIgnoreCase);
                             
                             if (isMatch)
                             {
@@ -619,71 +604,42 @@ Get-AppxProvisionedPackage -Online | Where-Object {{ $_.DisplayName -eq $AppName
                                     log($"[Registrybereinigung] Fehler beim Löschen: {ex.Message}");
                                 }
                             }
-                            else if (publisherKeywords.Count > 0)
+                            else if (!string.IsNullOrWhiteSpace(app.Publisher) && 
+                                     !app.Publisher.Equals("Unbekannt", StringComparison.OrdinalIgnoreCase) && 
+                                     subkeyName.Equals(app.Publisher, StringComparison.OrdinalIgnoreCase))
                             {
-                                bool matchesPublisher = false;
-                                foreach (var pubKeyword in publisherKeywords)
+                                try
                                 {
-                                    if (pubKeyword.Length > 2 && subkeyName.Equals(pubKeyword, StringComparison.OrdinalIgnoreCase))
+                                    using (RegistryKey? pubKey = key.OpenSubKey(subkeyName, true))
                                     {
-                                        matchesPublisher = true;
-                                        break;
-                                    }
-                                }
-                                
-                                if (matchesPublisher)
-                                {
-                                    try
-                                    {
-                                        using (RegistryKey? pubKey = key.OpenSubKey(subkeyName, true))
+                                        if (pubKey != null)
                                         {
-                                            if (pubKey != null)
+                                            foreach (string childKeyName in pubKey.GetSubKeyNames())
                                             {
-                                                foreach (string childKeyName in pubKey.GetSubKeyNames())
+                                                if (childKeyName.Equals(app.Name, StringComparison.OrdinalIgnoreCase))
                                                 {
-                                                    bool childMatch = false;
-                                                    if (childKeyName.Equals(app.Name, StringComparison.OrdinalIgnoreCase) || 
-                                                        (app.Name.Length > 3 && childKeyName.Contains(app.Name, StringComparison.OrdinalIgnoreCase)))
+                                                    log($"[Registrybereinigung] Verwaister Schlüssel im Hersteller-Pfad gefunden: {root.Root.Name}\\{root.Path}\\{subkeyName}\\{childKeyName}");
+                                                    try
                                                     {
-                                                        childMatch = true;
-                                                    }
-                                                    else
-                                                    {
-                                                        foreach (var keyword in appKeywords)
+                                                        pubKey.DeleteSubKeyTree(childKeyName, false);
+                                                        log($"[Registrybereinigung] Schlüssel erfolgreich entfernt.");
+                                                        
+                                                        if (pubKey.SubKeyCount == 0 && pubKey.ValueCount == 0)
                                                         {
-                                                            if (keyword.Length > 2 && childKeyName.Equals(keyword, StringComparison.OrdinalIgnoreCase))
-                                                            {
-                                                                childMatch = true;
-                                                                break;
-                                                            }
+                                                            log($"[Registrybereinigung] Leerer Hersteller-Schlüssel wird entfernt: {subkeyName}");
+                                                            key.DeleteSubKeyTree(subkeyName, false);
                                                         }
                                                     }
-                                                    
-                                                    if (childMatch)
+                                                    catch (Exception ex)
                                                     {
-                                                        log($"[Registrybereinigung] Verwaister Schlüssel im Hersteller-Pfad gefunden: {root.Root.Name}\\{root.Path}\\{subkeyName}\\{childKeyName}");
-                                                        try
-                                                        {
-                                                            pubKey.DeleteSubKeyTree(childKeyName, false);
-                                                            log($"[Registrybereinigung] Schlüssel erfolgreich entfernt.");
-                                                            
-                                                            if (pubKey.SubKeyCount == 0 && pubKey.ValueCount == 0)
-                                                            {
-                                                                log($"[Registrybereinigung] Leerer Hersteller-Schlüssel wird entfernt: {subkeyName}");
-                                                                key.DeleteSubKeyTree(subkeyName, false);
-                                                            }
-                                                        }
-                                                        catch (Exception ex)
-                                                        {
-                                                            log($"[Registrybereinigung] Fehler beim Löschen: {ex.Message}");
-                                                        }
+                                                        log($"[Registrybereinigung] Fehler beim Löschen: {ex.Message}");
                                                     }
                                                 }
                                             }
                                         }
                                     }
-                                    catch {}
                                 }
+                                catch {}
                             }
                         }
                     }
@@ -739,7 +695,7 @@ Get-AppxProvisionedPackage -Online | Where-Object {{ $_.DisplayName -eq $AppName
                 .ToList();
 
             var appKeywords = ExtractKeywords(item.Name);
-            if (appKeywords.Count == 0 && string.IsNullOrWhiteSpace(item.Name))
+            if (string.IsNullOrWhiteSpace(item.Name))
                 return;
 
             // Suche nach Verknüpfungsdateien (lnk, url, ico)
@@ -757,7 +713,7 @@ Get-AppxProvisionedPackage -Online | Where-Object {{ $_.DisplayName -eq $AppName
                                 continue;
 
                             string fileName = Path.GetFileNameWithoutExtension(file);
-                            if (IsShortcutMatch(fileName, item.Name, appKeywords))
+                            if (IsShortcutMatch(fileName, item.Name))
                             {
                                 log($"[Shortcutbereinigung] Verknüpfung/Icon gelöscht: {file}");
                                 File.Delete(file);
@@ -814,7 +770,7 @@ Get-AppxProvisionedPackage -Online | Where-Object {{ $_.DisplayName -eq $AppName
                             {
                                 string tfName = Path.GetFileName(tf).ToLowerInvariant();
                                 if ((tfName.Contains("icon") || tfName.Contains("cache")) && 
-                                    IsShortcutMatch(Path.GetFileNameWithoutExtension(tf), item.Name, appKeywords))
+                                    IsShortcutMatch(Path.GetFileNameWithoutExtension(tf), item.Name))
                                 {
                                     log($"[Shortcutbereinigung] Temporärer Icon-Cache gelöscht: {tf}");
                                     File.Delete(tf);
@@ -831,7 +787,7 @@ Get-AppxProvisionedPackage -Online | Where-Object {{ $_.DisplayName -eq $AppName
             }
         }
 
-        private bool IsShortcutMatch(string fileName, string appName, List<string> appKeywords)
+        private bool IsShortcutMatch(string fileName, string appName)
         {
             if (string.IsNullOrWhiteSpace(fileName) || string.IsNullOrWhiteSpace(appName))
                 return false;
@@ -839,31 +795,7 @@ Get-AppxProvisionedPackage -Online | Where-Object {{ $_.DisplayName -eq $AppName
             fileName = fileName.Trim();
             appName = appName.Trim();
 
-            if (fileName.Equals(appName, StringComparison.OrdinalIgnoreCase))
-                return true;
-
-            if (appName.Length >= 4 && fileName.Contains(appName, StringComparison.OrdinalIgnoreCase))
-                return true;
-
-            if (fileName.Length >= 4 && appName.Contains(fileName, StringComparison.OrdinalIgnoreCase))
-                return true;
-
-            if (appKeywords != null && appKeywords.Count > 0)
-            {
-                bool allKeywordsMatch = true;
-                foreach (var kw in appKeywords)
-                {
-                    if (kw.Length >= 3 && !fileName.Contains(kw, StringComparison.OrdinalIgnoreCase))
-                    {
-                        allKeywordsMatch = false;
-                        break;
-                    }
-                }
-                if (allKeywordsMatch)
-                    return true;
-            }
-
-            return false;
+            return fileName.Equals(appName, StringComparison.OrdinalIgnoreCase);
         }
 
         private List<string> ExtractKeywords(string text)

@@ -26,6 +26,7 @@ namespace SystemOptimierer.Models
         public string InstallDate { get; set; } = string.Empty;
         public string EstimatedSize { get; set; } = string.Empty;
         public string RegistryPath { get; set; } = string.Empty;
+        public string RegistryKey { get; set; } = string.Empty;
         public bool IsUwp { get; set; }
         public string PackageFullName { get; set; } = string.Empty;
 

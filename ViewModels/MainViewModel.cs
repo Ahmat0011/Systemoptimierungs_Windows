@@ -62,7 +62,7 @@ namespace SystemOptimierer.ViewModels
 
             // Uninstaller (Software & Apps Manager - Batch Support)
             LoadAppsCommand = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("Software & Apps laden", ct => LoadAppsAsync(ct), false), _ => !IsBusy);
-            UninstallCommand = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("Deinstallation", ct => UninstallSelectedAppsAsync(ct), false), _ => !IsBusy && (InstalledSoftware.Any(x => x.IsSelected) || InstalledUwpApps.Any(x => x.IsSelected)));
+            UninstallCommand = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("Deinstallation", ct => UninstallAppAsync(ct), false), _ => !IsBusy && (SelectedSoftware != null || SelectedUwpApp != null));
 
             // System-Leistung (RAM-Booster & Autostart Manager)
             BoostRamCommand = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("RAM optimieren", ct => _performanceService.BoostRamAsync(Log, ct), false), _ => !IsBusy);
@@ -536,33 +536,23 @@ namespace SystemOptimierer.ViewModels
             Log($"Erfolgreich {items.Count} Autostart-Programme geladen.");
         }
 
-        private async Task UninstallSelectedAppsAsync(CancellationToken ct)
+        private async Task UninstallAppAsync(CancellationToken ct)
         {
-            var appsToUninstall = _installedSoftware.Where(x => x.IsSelected)
-                .Concat(_installedUwpApps.Where(x => x.IsSelected))
-                .ToList();
+            SoftwareItem? app = SelectedSoftware ?? SelectedUwpApp;
 
-            if (appsToUninstall.Count == 0)
+            if (app == null)
             {
-                Log("FEHLER: Keine Anwendungen zum Deinstallieren ausgewählt.");
+                Log("FEHLER: Keine Anwendung zum Deinstallieren ausgewählt.");
                 return;
             }
 
-            Log($"Bereite Deinstallation für {appsToUninstall.Count} ausgewählte Anwendung(en) vor...");
+            Log($"Bereite Deinstallation für '{app.Name}' vor...");
             
-            int currentIndex = 1;
-            foreach (var app in appsToUninstall)
-            {
-                if (ct.IsCancellationRequested) break;
-
-                Log($"\n[Batch-Schritt {currentIndex}/{appsToUninstall.Count}] Starte Deinstallation von '{app.Name}'...");
-                await _uninstallerService.UninstallSoftwareAsync(app, CleanLeftovers, Log, ct);
-                currentIndex++;
-            }
+            await _uninstallerService.UninstallSoftwareAsync(app, CleanLeftovers, Log, ct);
             
             if (ct.IsCancellationRequested) return;
 
-            Log("\nBatch-Deinstallation abgeschlossen. Aktualisiere die Listen und die Speicherplatz-Anzeige...");
+            Log("\nDeinstallation abgeschlossen. Aktualisiere die Listen und die Speicherplatz-Anzeige...");
             await LoadAppsAsync(ct);
             await RefreshStorageInfoAsync();
         }

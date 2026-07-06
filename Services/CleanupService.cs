@@ -1,4 +1,6 @@
 using System;
+using System.IO;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -6,6 +8,15 @@ namespace SystemOptimierer.Services
 {
     public class CleanupService : ICleanupService
     {
+        // Nativer Papierkorb-Aufruf: schneller und stabiler als einen
+        // PowerShell-Prozess für Clear-RecycleBin zu starten.
+        [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+        private static extern int SHEmptyRecycleBin(IntPtr hwnd, string? pszRootPath, uint dwFlags);
+
+        private const uint SHERB_NOCONFIRMATION = 0x00000001;
+        private const uint SHERB_NOPROGRESSUI   = 0x00000002;
+        private const uint SHERB_NOSOUND        = 0x00000004;
+
         private readonly ICommandExecutionService _cmd;
         private readonly IPowerShellService _ps;
 
@@ -32,18 +43,24 @@ namespace SystemOptimierer.Services
             await RunWithStepTimeoutAsync(
                 innerCt => _cmd.RunCommandAsync("cmd", @"/c del /q /f /s C:\Windows\Temp\* > nul 2>&1",      log, log, innerCt),
                 ct, DefaultStepTimeout, log);
-            await RunWithStepTimeoutAsync(
-                innerCt => _cmd.RunCommandAsync("cmd", @"/c del /q /f /s D:\Temp\* > nul 2>&1",              log, log, innerCt),
-                ct, TimeSpan.FromSeconds(30), log);
+            if (Directory.Exists(@"D:\Temp")) // nicht auf jedem System vorhanden
+            {
+                await RunWithStepTimeoutAsync(
+                    innerCt => _cmd.RunCommandAsync("cmd", @"/c del /q /f /s D:\Temp\* > nul 2>&1",          log, log, innerCt),
+                    ct, TimeSpan.FromSeconds(30), log);
+            }
             log("[1/6] \u2713 Temporäre Dateien bereinigt.");
 
             if (ct.IsCancellationRequested) return;
 
-            // [2/6] Recycle bin
-            log("[2/6] Leere den Papierkorb auf ALLEN Laufwerken (C: und D:)...");
-            await RunWithStepTimeoutAsync(
-                innerCt => _ps.RunScriptAsync("Clear-RecycleBin -Force -ErrorAction SilentlyContinue", log, log, innerCt),
-                ct, DefaultStepTimeout, log);
+            // [2/6] Recycle bin \u2013 nativ per Shell-API statt PowerShell-Prozess
+            log("[2/6] Leere den Papierkorb auf ALLEN Laufwerken...");
+            await Task.Run(() =>
+            {
+                // R\u00fcckgabewert bewusst ignoriert: S_OK oder "bereits leer" (E_UNEXPECTED u.\u00e4.)
+                _ = SHEmptyRecycleBin(IntPtr.Zero, null,
+                    SHERB_NOCONFIRMATION | SHERB_NOPROGRESSUI | SHERB_NOSOUND);
+            }, ct);
             log("[2/6] \u2713 Papierkorb geleert.");
 
             if (ct.IsCancellationRequested) return;

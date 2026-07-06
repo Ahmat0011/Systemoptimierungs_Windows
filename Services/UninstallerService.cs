@@ -51,72 +51,88 @@ namespace SystemOptimierer.Services
         public async Task<List<SoftwareItem>> GetInstalledUwpAppsAsync(Action<string> log, CancellationToken ct)
         {
             var uwpApps = new List<SoftwareItem>();
-            
-            // Script to query Store/UWP packages
+
+            // JSON statt '##'-String-Splitting: robust gegen Sonderzeichen in App-Namen.
+            // ConvertTo-Json -InputObject @(...) erhält das Array auch bei nur 1 Treffer (PS 5.1).
             string script = @"
-Get-AppxPackage -AllUsers | Where-Object { -not $_.IsFramework -and $_.NonRemovable -ne $true -and $_.SignatureKind -eq 'Store' } | ForEach-Object {
-    $displayName = $_.DisplayName
-    if ([string]::IsNullOrEmpty($displayName)) {
-        $displayName = $_.Name
+$apps = Get-AppxPackage -AllUsers | Where-Object { -not $_.IsFramework -and $_.NonRemovable -ne $true -and $_.SignatureKind -eq 'Store' } | ForEach-Object {
+    [PSCustomObject]@{
+        Name            = $_.Name
+        Version         = [string]$_.Version
+        PublisherId     = [string]$_.PublisherId
+        PackageFullName = $_.PackageFullName
     }
-    $publisher = $_.PublisherId
-    if ([string]::IsNullOrEmpty($publisher)) {
-        $publisher = 'Microsoft Store'
-    }
-    Write-Output ""$($displayName)##$($_.Version)##$($publisher)##$($_.PackageFullName)""
 }
+ConvertTo-Json -InputObject @($apps) -Compress
 ";
 
             log("Führe PowerShell-Abfrage für Windows Store Apps aus...");
-            
+
+            var jsonOutput = new System.Text.StringBuilder();
             try
             {
-                await _ps.RunScriptAsync(script, 
+                await _ps.RunScriptAsync(script,
                     onOutput: line =>
                     {
-                        if (string.IsNullOrWhiteSpace(line)) return;
-                        
-                        var parts = line.Split("##", StringSplitOptions.None);
-                        if (parts.Length >= 4)
+                        if (!string.IsNullOrWhiteSpace(line))
                         {
-                            var displayName = parts[0].Trim();
-                            var version = parts[1].Trim();
-                            var publisher = parts[2].Trim();
-                            var packageFullName = parts[3].Trim();
-                            
-                            lock (uwpApps)
-                            {
-                                // Filter duplicate package full names
-                                if (!uwpApps.Any(a => a.PackageFullName.Equals(packageFullName, StringComparison.OrdinalIgnoreCase)))
-                                {
-                                    uwpApps.Add(new SoftwareItem
-                                    {
-                                        Name = displayName,
-                                        Publisher = publisher,
-                                        DisplayVersion = version,
-                                        UninstallString = string.Empty,
-                                        InstallDate = "Unbekannt",
-                                        EstimatedSize = "Unbekannt",
-                                        IsUwp = true,
-                                        PackageFullName = packageFullName
-                                    });
-                                }
-                            }
+                            lock (jsonOutput) { jsonOutput.AppendLine(line); }
                         }
                     },
                     onError: err =>
                     {
-                        // Simply log error in background
                         log($"[PowerShell Info] {err}");
                     },
                     cancellationToken: ct
                 );
+
+                string json = jsonOutput.ToString().Trim();
+                if (json.Length > 0)
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(json);
+                    var root = doc.RootElement;
+
+                    // Einzelnes Objekt oder Array beide unterstützen
+                    var elements = root.ValueKind == System.Text.Json.JsonValueKind.Array
+                        ? root.EnumerateArray().ToList()
+                        : new List<System.Text.Json.JsonElement> { root };
+
+                    var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var el in elements)
+                    {
+                        if (el.ValueKind != System.Text.Json.JsonValueKind.Object) continue;
+
+                        string name = el.TryGetProperty("Name", out var n) ? n.GetString() ?? string.Empty : string.Empty;
+                        string version = el.TryGetProperty("Version", out var v) ? v.GetString() ?? string.Empty : string.Empty;
+                        string publisher = el.TryGetProperty("PublisherId", out var p) ? p.GetString() ?? string.Empty : string.Empty;
+                        string packageFullName = el.TryGetProperty("PackageFullName", out var f) ? f.GetString() ?? string.Empty : string.Empty;
+
+                        if (string.IsNullOrWhiteSpace(packageFullName)) continue;
+                        if (!seen.Add(packageFullName)) continue; // Duplikate überspringen
+
+                        uwpApps.Add(new SoftwareItem
+                        {
+                            Name = string.IsNullOrWhiteSpace(name) ? packageFullName : name,
+                            Publisher = string.IsNullOrWhiteSpace(publisher) ? "Microsoft Store" : publisher,
+                            DisplayVersion = version,
+                            UninstallString = string.Empty,
+                            InstallDate = "Unbekannt",
+                            EstimatedSize = "Unbekannt",
+                            IsUwp = true,
+                            PackageFullName = packageFullName
+                        });
+                    }
+                }
+            }
+            catch (System.Text.Json.JsonException ex)
+            {
+                log($"[FEHLER] Windows-Apps-Liste konnte nicht gelesen werden (ungültiges JSON): {ex.Message}");
             }
             catch (Exception ex)
             {
                 log($"[FEHLER] Beim Auslesen der Windows Apps: {ex.Message}");
             }
-            
+
             return uwpApps.OrderBy(a => a.Name).ToList();
         }
 
@@ -158,11 +174,10 @@ Get-AppxPackage -AllUsers | Where-Object { -not $_.IsFramework -and $_.NonRemova
             
             if (item.IsUwp)
             {
-                // Sicherheitsabfrage für UWP: Vergleiche die App-Identität per exakter Gleichheit
-                string targetKey = item.PackageFullName;
-                if (item.PackageFullName != targetKey)
+                // Sicherheitsabfrage: ohne PackageFullName keine Deinstallation
+                if (string.IsNullOrWhiteSpace(item.PackageFullName))
                 {
-                    log("FEHLER: UWP-App-Identität stimmt nicht überein.\n");
+                    log("FEHLER: PackageFullName der UWP-App fehlt – Deinstallation abgebrochen.\n");
                     return;
                 }
 
@@ -694,7 +709,6 @@ Get-AppxProvisionedPackage -Online | Where-Object {{ $_.DisplayName -eq $AppName
                 .Where(Directory.Exists)
                 .ToList();
 
-            var appKeywords = ExtractKeywords(item.Name);
             if (string.IsNullOrWhiteSpace(item.Name))
                 return;
 
@@ -703,8 +717,9 @@ Get-AppxProvisionedPackage -Online | Where-Object {{ $_.DisplayName -eq $AppName
             {
                 try
                 {
-                    var files = Directory.GetFiles(dir, "*.*", SearchOption.AllDirectories);
-                    foreach (var file in files)
+                    // EnumerateFiles statt GetFiles: streamt statt alles in den RAM zu
+                    // laden und liefert Teilergebnisse auch bei Zugriffsfehlern.
+                    foreach (var file in Directory.EnumerateFiles(dir, "*.*", SearchOption.AllDirectories))
                     {
                         try
                         {
@@ -763,8 +778,7 @@ Get-AppxProvisionedPackage -Online | Where-Object {{ $_.DisplayName -eq $AppName
                     string tempPath = Path.GetTempPath();
                     if (Directory.Exists(tempPath))
                     {
-                        var tempFiles = Directory.GetFiles(tempPath, "*.*", SearchOption.TopDirectoryOnly);
-                        foreach (var tf in tempFiles)
+                        foreach (var tf in Directory.EnumerateFiles(tempPath, "*.*", SearchOption.TopDirectoryOnly))
                         {
                             try
                             {
@@ -796,29 +810,6 @@ Get-AppxProvisionedPackage -Online | Where-Object {{ $_.DisplayName -eq $AppName
             appName = appName.Trim();
 
             return fileName.Equals(appName, StringComparison.OrdinalIgnoreCase);
-        }
-
-        private List<string> ExtractKeywords(string text)
-        {
-            var keywords = new List<string>();
-            if (string.IsNullOrWhiteSpace(text)) return keywords;
-            
-            var parts = text.Split(new[] { ' ', '-', ',', '_', '.' }, StringSplitOptions.RemoveEmptyEntries);
-            foreach (var part in parts)
-            {
-                string cleaned = part.Trim().ToLowerInvariant();
-                
-                if (cleaned.Length <= 2) continue;
-                if (double.TryParse(cleaned, out _)) continue;
-                if (cleaned == "corporation" || cleaned == "software" || cleaned == "limited" || 
-                    cleaned == "gmbh" || cleaned == "inc" || cleaned == "llc" || cleaned == "co") 
-                    continue;
-                
-                if (IsProtected(cleaned)) continue;
-                
-                keywords.Add(cleaned);
-            }
-            return keywords.Distinct().ToList();
         }
 
         private bool IsProtected(string name)

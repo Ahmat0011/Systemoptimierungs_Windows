@@ -23,7 +23,9 @@ namespace SystemOptimierer.Services
         private static extern bool CloseHandle(IntPtr hObject);
 
         private const uint PROCESS_SET_QUOTA = 0x0100;
-        private const uint PROCESS_QUERY_INFORMATION = 0x0400;
+        // LIMITED_INFORMATION statt QUERY_INFORMATION: funktioniert auch bei
+        // geschützten Prozessen → mehr Prozesse können optimiert werden.
+        private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
 
         public async Task BoostRamAsync(Action<string> log, CancellationToken ct)
         {
@@ -43,7 +45,7 @@ namespace SystemOptimierer.Services
                 {
                     initialMem += proc.WorkingSet64;
 
-                    IntPtr hProcess = OpenProcess(PROCESS_SET_QUOTA | PROCESS_QUERY_INFORMATION, false, proc.Id);
+                    IntPtr hProcess = OpenProcess(PROCESS_SET_QUOTA | PROCESS_QUERY_LIMITED_INFORMATION, false, proc.Id);
 
                     if (hProcess != IntPtr.Zero)
                     {

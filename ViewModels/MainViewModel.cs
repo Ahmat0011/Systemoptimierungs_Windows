@@ -5,11 +5,13 @@ using System.ComponentModel;
 using System.Linq;
 using System.Net.NetworkInformation;
 using System.Runtime.CompilerServices;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Data;
 using System.Windows.Input;
+using System.Windows.Threading;
 using SystemOptimierer.Core;
 using SystemOptimierer.Models;
 using SystemOptimierer.Services;
@@ -44,42 +46,70 @@ namespace SystemOptimierer.ViewModels
             _storageService = storageService;
             _performanceService = performanceService;
 
+            // Gefilterte Sichten (ICollectionView): filtert in-place, ohne dass die
+            // DataGrids bei jedem Tastendruck alle Zeilen-Container neu aufbauen.
+            FilteredSoftware = CollectionViewSource.GetDefaultView(_installedSoftware);
+            FilteredSoftware.Filter = o => MatchesSoftwareSearch(o as SoftwareItem, SearchText);
+            FilteredUwpApps = CollectionViewSource.GetDefaultView(_installedUwpApps);
+            FilteredUwpApps.Filter = o => MatchesSoftwareSearch(o as SoftwareItem, SearchText);
+            FilteredStartupItems = CollectionViewSource.GetDefaultView(_startupItems);
+            FilteredStartupItems.Filter = o => MatchesStartupSearch(o as StartupItem, StartupSearchText);
+
+            // Log-Batching: Zeilen werden gepuffert und gebündelt (10x/s) in die UI
+            // geschrieben statt pro Zeile (verhindert Dispatcher-Flut & UI-Freeze).
+            _logFlushTimer = new DispatcherTimer(DispatcherPriority.Background)
+            {
+                Interval = TimeSpan.FromMilliseconds(100)
+            };
+            _logFlushTimer.Tick += FlushLogBuffer;
+            _logFlushTimer.Start();
+
+            // Zentrale Fehlerbehandlung für alle asynchronen Commands
+            Action<Exception> onCommandError = ex => Log($"\nKritischer Fehler: {ex.Message}");
+
             // Update Center
-            CheckUpdatesCommand   = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("Updates suchen",       ct => CheckUpdatesWrapperAsync(ct)),   _ => !IsBusy);
-            InstallUpdatesCommand = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("Updates installieren", ct => InstallUpdatesWrapperAsync(ct)), _ => !IsBusy);
-            CheckDriversCommand   = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("Treiber suchen",       ct => CheckDriversWrapperAsync(ct)),   _ => !IsBusy);
-            InstallDriversCommand = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("Treiber installieren", ct => InstallDriversWrapperAsync(ct)), _ => !IsBusy);
+            CheckUpdatesCommand   = new AsyncRelayCommand(_ => ExecuteWithBusyStateAsync("Updates suchen",       ct => CheckUpdatesWrapperAsync(ct)),   _ => !IsBusy, onCommandError);
+            InstallUpdatesCommand = new AsyncRelayCommand(_ => ExecuteWithBusyStateAsync("Updates installieren", ct => InstallUpdatesWrapperAsync(ct)), _ => !IsBusy, onCommandError);
+            CheckDriversCommand   = new AsyncRelayCommand(_ => ExecuteWithBusyStateAsync("Treiber suchen",       ct => CheckDriversWrapperAsync(ct)),   _ => !IsBusy, onCommandError);
+            InstallDriversCommand = new AsyncRelayCommand(_ => ExecuteWithBusyStateAsync("Treiber installieren", ct => InstallDriversWrapperAsync(ct)), _ => !IsBusy, onCommandError);
 
             // System-Reparatur
-            RepairSystemCommand   = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("System reparieren",   ct => _repairService.RepairSystemAsync(Log, ct)),    _ => !IsBusy);
+            RepairSystemCommand   = new AsyncRelayCommand(_ => ExecuteWithBusyStateAsync("System reparieren",   ct => _repairService.RepairSystemAsync(Log, ct)),    _ => !IsBusy, onCommandError);
 
             // Bereinigung & Optimierung
-            CleanupSystemCommand  = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("System bereinigen",   async ct => {
+            CleanupSystemCommand  = new AsyncRelayCommand(_ => ExecuteWithBusyStateAsync("System bereinigen",   async ct => {
                 await _cleanupService.CleanupSystemAsync(Log, ct);
                 await RefreshStorageInfoAsync();
-            },  false), _ => !IsBusy);
-            OptimizeNetworkCommand = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("Netzwerk optimieren", ct => _cleanupService.OptimizeNetworkAsync(Log, ct), false), _ => !IsBusy);
+            },  false), _ => !IsBusy, onCommandError);
+            OptimizeNetworkCommand = new AsyncRelayCommand(_ => ExecuteWithBusyStateAsync("Netzwerk optimieren", ct => _cleanupService.OptimizeNetworkAsync(Log, ct), false), _ => !IsBusy, onCommandError);
 
             // Uninstaller (Software & Apps Manager - Batch Support)
-            LoadAppsCommand = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("Software & Apps laden", ct => LoadAppsAsync(ct), false), _ => !IsBusy);
-            UninstallCommand = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("Deinstallation", ct => UninstallAppAsync(ct), false), _ => !IsBusy && (SelectedSoftware != null || SelectedUwpApp != null));
+            LoadAppsCommand = new AsyncRelayCommand(_ => ExecuteWithBusyStateAsync("Software & Apps laden", ct => LoadAppsAsync(ct), false), _ => !IsBusy, onCommandError);
+            UninstallCommand = new AsyncRelayCommand(_ => ExecuteWithBusyStateAsync("Deinstallation", ct => UninstallAppAsync(ct), false), _ => !IsBusy && (SelectedSoftware != null || SelectedUwpApp != null), onCommandError);
 
             // System-Leistung (RAM-Booster & Autostart Manager)
-            BoostRamCommand = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("RAM optimieren", ct => _performanceService.BoostRamAsync(Log, ct), false), _ => !IsBusy);
-            ToggleStartupCommand = new RelayCommand(async param => await ExecuteWithBusyStateAsync("Autostart ändern", async ct => {
+            BoostRamCommand = new AsyncRelayCommand(_ => ExecuteWithBusyStateAsync("RAM optimieren", ct => _performanceService.BoostRamAsync(Log, ct), false), _ => !IsBusy, onCommandError);
+            ToggleStartupCommand = new AsyncRelayCommand(param => ExecuteWithBusyStateAsync("Autostart ändern", async ct => {
                 if (param is StartupItem item) {
                     await _performanceService.ToggleStartupItemAsync(item);
                     await LoadStartupItemsAsync(ct);
                 }
-            }, false), param => !IsBusy && param is StartupItem);
+            }, false), param => !IsBusy && param is StartupItem, onCommandError);
 
             // Global
             CancelCommand  = new RelayCommand(_ => CancelOperation(), _ => IsBusy);
 
             Log("System Optimierer gestartet. Bereit für Befehle...\n");
 
-            // Apps & Autostart beim Start im Hintergrund laden und Speicherplatz-Anzeige refreshen
-            _ = Task.Run(async () =>
+            // Initiales Laden auf dem UI-Thread starten (kein Task.Run!):
+            // IsBusy/CommandManager sind thread-affin – die schweren Arbeiten
+            // laufen innerhalb von ExecuteWithBusyStateAsync ohnehin über Task.Run.
+            _ = InitializeAsync();
+        }
+
+        private async Task InitializeAsync()
+        {
+            try
             {
                 await RefreshStorageInfoAsync();
                 await Task.Delay(300);
@@ -87,7 +117,11 @@ namespace SystemOptimierer.ViewModels
                     await LoadAppsAsync(ct);
                     await LoadStartupItemsAsync(ct);
                 }, false);
-            });
+            }
+            catch (Exception ex)
+            {
+                Log($"[WARNUNG] Fehler beim initialen Laden: {ex.Message}");
+            }
         }
 
         #region Properties
@@ -166,29 +200,11 @@ namespace SystemOptimierer.ViewModels
             }
         }
 
-        private ObservableCollection<SoftwareItem> _installedSoftware = new();
-        public ObservableCollection<SoftwareItem> InstalledSoftware
-        {
-            get => _installedSoftware;
-            set
-            {
-                _installedSoftware = value;
-                OnPropertyChanged();
-                OnPropertyChanged(nameof(FilteredSoftware));
-            }
-        }
+        private readonly ObservableCollection<SoftwareItem> _installedSoftware = new();
+        public ObservableCollection<SoftwareItem> InstalledSoftware => _installedSoftware;
 
-        private ObservableCollection<SoftwareItem> _installedUwpApps = new();
-        public ObservableCollection<SoftwareItem> InstalledUwpApps
-        {
-            get => _installedUwpApps;
-            set
-            {
-                _installedUwpApps = value;
-                OnPropertyChanged();
-                OnPropertyChanged(nameof(FilteredUwpApps));
-            }
-        }
+        private readonly ObservableCollection<SoftwareItem> _installedUwpApps = new();
+        public ObservableCollection<SoftwareItem> InstalledUwpApps => _installedUwpApps;
 
         private string _searchText = string.Empty;
         public string SearchText
@@ -200,8 +216,8 @@ namespace SystemOptimierer.ViewModels
                 {
                     _searchText = value;
                     OnPropertyChanged();
-                    OnPropertyChanged(nameof(FilteredSoftware));
-                    OnPropertyChanged(nameof(FilteredUwpApps));
+                    FilteredSoftware.Refresh();
+                    FilteredUwpApps.Refresh();
                 }
             }
         }
@@ -260,46 +276,30 @@ namespace SystemOptimierer.ViewModels
             }
         }
 
-        public IEnumerable<SoftwareItem> FilteredSoftware
+        // Gefilterte Sichten – im Konstruktor initialisiert, filtern in-place.
+        public ICollectionView FilteredSoftware { get; }
+        public ICollectionView FilteredUwpApps { get; }
+        public ICollectionView FilteredStartupItems { get; }
+
+        private static bool MatchesSoftwareSearch(SoftwareItem? app, string search)
         {
-            get
-            {
-                if (string.IsNullOrWhiteSpace(SearchText))
-                {
-                    return _installedSoftware;
-                }
-                return _installedSoftware.Where(app =>
-                    app.Name.Contains(SearchText, StringComparison.OrdinalIgnoreCase) ||
-                    app.Publisher.Contains(SearchText, StringComparison.OrdinalIgnoreCase));
-            }
+            if (app == null) return false;
+            if (string.IsNullOrWhiteSpace(search)) return true;
+            return app.Name.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                   app.Publisher.Contains(search, StringComparison.OrdinalIgnoreCase);
         }
 
-        public IEnumerable<SoftwareItem> FilteredUwpApps
+        private static bool MatchesStartupSearch(StartupItem? item, string search)
         {
-            get
-            {
-                if (string.IsNullOrWhiteSpace(SearchText))
-                {
-                    return _installedUwpApps;
-                }
-                return _installedUwpApps.Where(app =>
-                    app.Name.Contains(SearchText, StringComparison.OrdinalIgnoreCase) ||
-                    app.Publisher.Contains(SearchText, StringComparison.OrdinalIgnoreCase));
-            }
+            if (item == null) return false;
+            if (string.IsNullOrWhiteSpace(search)) return true;
+            return item.Name.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                   item.Path.Contains(search, StringComparison.OrdinalIgnoreCase);
         }
 
         // Startup Manager Properties
-        private ObservableCollection<StartupItem> _startupItems = new();
-        public ObservableCollection<StartupItem> StartupItems
-        {
-            get => _startupItems;
-            set
-            {
-                _startupItems = value;
-                OnPropertyChanged();
-                OnPropertyChanged(nameof(FilteredStartupItems));
-            }
-        }
+        private readonly ObservableCollection<StartupItem> _startupItems = new();
+        public ObservableCollection<StartupItem> StartupItems => _startupItems;
 
         private string _startupSearchText = string.Empty;
         public string StartupSearchText
@@ -311,22 +311,8 @@ namespace SystemOptimierer.ViewModels
                 {
                     _startupSearchText = value;
                     OnPropertyChanged();
-                    OnPropertyChanged(nameof(FilteredStartupItems));
+                    FilteredStartupItems.Refresh();
                 }
-            }
-        }
-
-        public IEnumerable<StartupItem> FilteredStartupItems
-        {
-            get
-            {
-                if (string.IsNullOrWhiteSpace(StartupSearchText))
-                {
-                    return _startupItems;
-                }
-                return _startupItems.Where(item =>
-                    item.Name.Contains(StartupSearchText, StringComparison.OrdinalIgnoreCase) ||
-                    item.Path.Contains(StartupSearchText, StringComparison.OrdinalIgnoreCase));
             }
         }
 
@@ -399,33 +385,67 @@ namespace SystemOptimierer.ViewModels
 
         private const int MaxLogLength = 60_000;
 
+        private readonly StringBuilder _logBuffer = new();
+        private readonly object _logLock = new();
+        private readonly DispatcherTimer _logFlushTimer;
+
+        /// <summary>
+        /// Thread-sicher: puffert die Zeile nur. Der DispatcherTimer schreibt die
+        /// gesammelten Zeilen gebündelt in LogText (max. 10 UI-Updates pro Sekunde
+        /// statt eines Dispatcher-Aufrufs pro Zeile).
+        /// </summary>
         private void Log(string message)
         {
-            Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+            lock (_logLock)
             {
-                string combined = LogText + message + "\n";
-                if (combined.Length > MaxLogLength)
-                {
-                    // Keep the most recent portion so the log stays responsive
-                    int startSearch = Math.Max(0, combined.Length - (MaxLogLength / 2));
-                    int cutAt = combined.IndexOf('\n', startSearch);
-                    combined = cutAt > 0
-                        ? "[... ältere Einträge wurden gekürzt ...]\n" + combined.Substring(cutAt + 1)
-                        : message + "\n";
-                }
-                LogText = combined;
-            }));
+                _logBuffer.Append(message).Append('\n');
+            }
+        }
+
+        private void FlushLogBuffer(object? sender, EventArgs e)
+        {
+            string pending;
+            lock (_logLock)
+            {
+                if (_logBuffer.Length == 0) return;
+                pending = _logBuffer.ToString();
+                _logBuffer.Clear();
+            }
+
+            string combined = LogText + pending;
+            if (combined.Length > MaxLogLength)
+            {
+                // Nur den jüngsten Teil behalten, damit die TextBox performant bleibt
+                int startSearch = Math.Max(0, combined.Length - (MaxLogLength / 2));
+                int cutAt = combined.IndexOf('\n', startSearch);
+                combined = cutAt > 0
+                    ? "[... ältere Einträge wurden gekürzt ...]\n" + combined.Substring(cutAt + 1)
+                    : pending;
+            }
+            LogText = combined;
         }
 
         private async Task<bool> IsInternetAvailableAsync()
         {
+            // Schnell-Ausstieg: gar kein Netzwerk-Adapter aktiv
+            if (!NetworkInterface.GetIsNetworkAvailable()) return false;
+
+            // 1. Versuch: Ping (schnell, aber ICMP kann von Firewalls geblockt sein)
             try
             {
-                using (var ping = new Ping())
-                {
-                    var reply = await ping.SendPingAsync("1.1.1.1", 2000);
-                    return reply.Status == IPStatus.Success;
-                }
+                using var ping = new Ping();
+                var reply = await ping.SendPingAsync("1.1.1.1", 2000);
+                if (reply.Status == IPStatus.Success) return true;
+            }
+            catch { /* weiter mit TCP-Fallback */ }
+
+            // 2. Versuch: TCP-Verbindung auf Port 443 (funktioniert auch ohne ICMP)
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+                using var tcp = new System.Net.Sockets.TcpClient();
+                await tcp.ConnectAsync("www.microsoft.com", 443, cts.Token);
+                return true;
             }
             catch
             {
@@ -443,14 +463,18 @@ namespace SystemOptimierer.ViewModels
 
             IsBusy = true;
             StatusMessage = $"{operationName} läuft...";
-            _cts = new CancellationTokenSource();
+
+            // Lokale Referenz: verhindert Race-Condition zwischen Dispose (hier)
+            // und Cancel (CancelOperation) auf dem geteilten _cts-Feld.
+            var cts = new CancellationTokenSource();
+            _cts = cts;
 
             try
             {
-                await Task.Run(async () => await action(_cts.Token));
+                await Task.Run(() => action(cts.Token));
                 StatusMessage = $"{operationName} erfolgreich abgeschlossen.";
             }
-            catch (TaskCanceledException)
+            catch (OperationCanceledException) // Basisklasse fängt auch TaskCanceledException
             {
                 Log($"\n--- VORGANG ABGEBROCHEN: {operationName} ---");
                 StatusMessage = "Abgebrochen";
@@ -462,8 +486,8 @@ namespace SystemOptimierer.ViewModels
             }
             finally
             {
-                _cts?.Dispose();
-                _cts = null;
+                _cts = null;   // Erst Feld freigeben, dann lokale Instanz entsorgen
+                cts.Dispose();
                 IsBusy = false;
             }
         }
@@ -510,9 +534,6 @@ namespace SystemOptimierer.ViewModels
                     };
                     _installedUwpApps.Add(app);
                 }
-
-                OnPropertyChanged(nameof(FilteredSoftware));
-                OnPropertyChanged(nameof(FilteredUwpApps));
             });
             
             Log($"Erfolgreich {classicApps.Count} System-Programme und {uwpApps.Count} Windows Apps geladen.");
@@ -531,7 +552,6 @@ namespace SystemOptimierer.ViewModels
                 {
                     _startupItems.Add(item);
                 }
-                OnPropertyChanged(nameof(FilteredStartupItems));
             });
             Log($"Erfolgreich {items.Count} Autostart-Programme geladen.");
         }
@@ -828,10 +848,21 @@ namespace SystemOptimierer.ViewModels
 
         private void CancelOperation()
         {
-            if (_cts != null && !_cts.IsCancellationRequested)
+            // Lokale Kopie gegen Race mit dem finally-Block in ExecuteWithBusyStateAsync
+            var cts = _cts;
+            if (cts == null) return;
+
+            try
             {
-                Log("\nAbbruch wird eingeleitet...");
-                _cts.Cancel();
+                if (!cts.IsCancellationRequested)
+                {
+                    Log("\nAbbruch wird eingeleitet...");
+                    cts.Cancel();
+                }
+            }
+            catch (ObjectDisposedException)
+            {
+                // Operation ist gerade regulär beendet worden – nichts zu tun
             }
         }
 

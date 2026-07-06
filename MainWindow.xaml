@@ -679,6 +679,10 @@
             <Setter Property="CanUserResizeRows" Value="False"/>
             <Setter Property="RowHeaderWidth" Value="0"/>
             <Setter Property="RowHeight" Value="40"/>
+            <!-- Virtualisierung: nur sichtbare Zeilen rendern, Container wiederverwenden -->
+            <Setter Property="EnableRowVirtualization" Value="True"/>
+            <Setter Property="VirtualizingPanel.VirtualizationMode" Value="Recycling"/>
+            <Setter Property="ScrollViewer.CanContentScroll" Value="True"/>
             <Setter Property="CellStyle">
                 <Setter.Value>
                     <Style TargetType="DataGridCell">

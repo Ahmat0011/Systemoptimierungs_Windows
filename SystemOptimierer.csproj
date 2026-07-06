@@ -14,16 +14,13 @@
     <Resource Include="icon.ico" />
   </ItemGroup>
 
+  <!-- Archivierte Alt-Dateien vom Build ausschließen -->
   <ItemGroup>
-    <PackageReference Include="System.Management" Version="9.0.0" />
-  </ItemGroup>
-
-  <!-- Exclude the Tests sub-project from the main build globbing -->
-  <ItemGroup>
-    <Compile Remove="Tests\**" />
-    <None Remove="Tests\**" />
-    <Content Remove="Tests\**" />
-    <EmbeddedResource Remove="Tests\**" />
+    <Compile Remove="_archive_alte_dateien\**" />
+    <None Remove="_archive_alte_dateien\**" />
+    <Content Remove="_archive_alte_dateien\**" />
+    <EmbeddedResource Remove="_archive_alte_dateien\**" />
+    <Page Remove="_archive_alte_dateien\**" />
   </ItemGroup>
 
 </Project>

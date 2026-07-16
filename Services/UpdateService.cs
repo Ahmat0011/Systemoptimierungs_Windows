@@ -24,21 +24,21 @@ namespace SystemOptimierer.Services
 
             log("[1/3] Aktualisiere alle Winget-Quellen (winget + msstore)...");
             await _cmd.RunCommandAsync("winget",
-                "source update --accept-source-agreements",
+                "source update --accept-source-agreements --disable-interactivity",
                 log, log, ct);
 
             if (ct.IsCancellationRequested) return;
 
             log("[2/3] Scanne Machine-Scope (systemweite Installationen)...");
             await _cmd.RunCommandAsync("winget",
-                "upgrade --scope machine --accept-source-agreements",
+                "upgrade --scope machine --accept-source-agreements --disable-interactivity",
                 log, log, ct);
 
             if (ct.IsCancellationRequested) return;
 
             log("[3/3] Scanne User-Scope (benutzerspezifische Installationen & MS Store)...");
             await _cmd.RunCommandAsync("winget",
-                "upgrade --scope user --accept-source-agreements",
+                "upgrade --scope user --accept-source-agreements --disable-interactivity",
                 log, log, ct);
 
             log("--- DEEP-SCAN ABGESCHLOSSEN ---");
@@ -50,21 +50,21 @@ namespace SystemOptimierer.Services
 
             log("[1/3] Aktualisiere alle Winget-Quellen...");
             await _cmd.RunCommandAsync("winget",
-                "source update --accept-source-agreements",
+                "source update --accept-source-agreements --disable-interactivity",
                 log, log, ct);
 
             if (ct.IsCancellationRequested) return;
 
             log("[2/3] Installiere Updates (Machine-Scope)...");
             await _cmd.RunCommandAsync("winget",
-                "upgrade --all --scope machine --accept-package-agreements --accept-source-agreements",
+                "upgrade --all --scope machine --accept-package-agreements --accept-source-agreements --disable-interactivity --silent",
                 log, log, ct);
 
             if (ct.IsCancellationRequested) return;
 
             log("[3/3] Installiere Updates (User-Scope / MS Store)...");
             await _cmd.RunCommandAsync("winget",
-                "upgrade --all --scope user --accept-package-agreements --accept-source-agreements",
+                "upgrade --all --scope user --accept-package-agreements --accept-source-agreements --disable-interactivity --silent",
                 log, log, ct);
 
             log("--- INSTALLATION ALLER STABILEN UPDATES ABGESCHLOSSEN ---");

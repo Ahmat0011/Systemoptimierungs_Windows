@@ -1,3 +1,4 @@
+using System;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 
@@ -29,6 +30,11 @@ namespace SystemOptimierer.Models
         public string RegistryKey { get; set; } = string.Empty;
         public bool IsUwp { get; set; }
         public string PackageFullName { get; set; } = string.Empty;
+
+        // Für die präzise Sortierung nach Installationsdatum und Größe im DataGrid
+        public DateTime? InstallDateTime { get; set; }
+        public string InstallDateDisplay { get; set; } = "Unbekannt";
+        public long EstimatedSizeKb { get; set; }
 
         public event PropertyChangedEventHandler? PropertyChanged;
         protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)

@@ -6,9 +6,8 @@
         WindowStyle="None" AllowsTransparency="True" ResizeMode="CanResizeWithGrip">
 
     <Window.Resources>
-        <!-- ===================== BUTTONS ===================== -->
         <Style TargetType="Button" x:Key="ModernButtonStyle">
-            <Setter Property="Background"       Value="#1A1C23"/>
+            <Setter Property="Background"      Value="#1A1C23"/>
             <Setter Property="Foreground"       Value="#E2E2E2"/>
             <Setter Property="FontWeight"       Value="SemiBold"/>
             <Setter Property="FontSize"         Value="13"/>
@@ -61,7 +60,6 @@
             </Style.Triggers>
         </Style>
 
-        <!-- TITLE BAR BUTTONS -->
         <Style TargetType="Button" x:Key="TitleBarButtonStyle">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="#8A8D93"/>
@@ -101,7 +99,6 @@
             </Style.Triggers>
         </Style>
 
-        <!-- ===================== NAV ITEMS ===================== -->
         <Style TargetType="RadioButton" x:Key="NavItemStyle">
             <Setter Property="Background"      Value="Transparent"/>
             <Setter Property="Foreground"      Value="#9EA3B0"/>
@@ -138,7 +135,6 @@
             </Setter>
         </Style>
 
-        <!-- ===================== CARDS ===================== -->
         <Style TargetType="Border" x:Key="CardStyle">
             <Setter Property="Background"      Value="#1A1C23"/>
             <Setter Property="BorderBrush"     Value="#22252D"/>
@@ -153,7 +149,6 @@
             </Setter>
         </Style>
 
-        <!-- ===================== TYPOGRAPHY ===================== -->
         <Style TargetType="TextBlock" x:Key="CardTitle">
             <Setter Property="Foreground"  Value="White"/>
             <Setter Property="FontSize"    Value="15"/>
@@ -173,7 +168,6 @@
             <Setter Property="Margin"      Value="0,0,0,10"/>
         </Style>
 
-        <!-- ===================== GLOBAL SCROLLBAR STYLE ===================== -->
         <Style TargetType="ScrollBar">
             <Setter Property="Background" Value="#121212"/>
             <Setter Property="BorderBrush" Value="Transparent"/>
@@ -221,7 +215,6 @@
             </Setter>
         </Style>
 
-        <!-- ===================== SCROLLBAR ===================== -->
         <Style TargetType="ScrollViewer">
             <Setter Property="Template">
                 <Setter.Value>
@@ -243,7 +236,6 @@
             </Setter>
         </Style>
 
-        <!-- ===================== PREMIUM PROGRESSBAR ===================== -->
         <Style x:Key="PremiumProgressBarStyle" TargetType="ProgressBar">
             <Setter Property="Height" Value="6"/>
             <Setter Property="Background" Value="#15171E"/>
@@ -252,20 +244,16 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="ProgressBar">
                         <Grid x:Name="TemplateRoot" SnapsToDevicePixels="true">
-                            <!-- Background Track -->
                             <Border Background="{TemplateBinding Background}" CornerRadius="3" BorderThickness="0"/>
-                            
-                            <!-- Glowing Track (behind the indicator for back glow) -->
+
                             <Border x:Name="GlowTrack" Background="Transparent" CornerRadius="3" Opacity="0.5"/>
 
-                            <!-- Standard Indicator (determinate) -->
                             <Border x:Name="PART_Indicator" HorizontalAlignment="Left" Background="#2D72D9" CornerRadius="3">
                                 <Border.Effect>
                                     <DropShadowEffect Color="#2D72D9" BlurRadius="6" ShadowDepth="0" Opacity="0.7"/>
                                 </Border.Effect>
                             </Border>
 
-                            <!-- Glow effect container for Indeterminate state -->
                             <Grid x:Name="AnimationVisuals" ClipToBounds="True" Visibility="Collapsed">
                                 <Border x:Name="GlowIndicator" CornerRadius="3" Width="150" HorizontalAlignment="Left">
                                     <Border.Background>
@@ -315,7 +303,6 @@
             </Setter>
         </Style>
 
-        <!-- ===================== SEARCH TEXTBOX ===================== -->
         <Style TargetType="TextBox" x:Key="ModernTextBoxStyle">
             <Setter Property="Background" Value="#1A1C23"/>
             <Setter Property="Foreground" Value="White"/>
@@ -357,7 +344,6 @@
             </Setter>
         </Style>
 
-        <!-- ===================== COMBOBOX ===================== -->
         <Style x:Key="ComboBoxToggleButton" TargetType="ToggleButton">
             <Setter Property="Template">
                 <Setter.Value>
@@ -373,7 +359,6 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="30"/>
                                 </Grid.ColumnDefinitions>
-                                <!-- Arrow -->
                                 <Path x:Name="arrow" 
                                       Grid.Column="1"
                                       Data="M 0 0 L 4 4 L 8 0 Z" 
@@ -458,15 +443,13 @@
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="0" MaxWidth="0"/>
                             </Grid.ColumnDefinitions>
-                            
-                            <!-- Toggle Button serving as background and drop-down indicator -->
+
                             <ToggleButton x:Name="toggleButton" 
                                           Grid.ColumnSpan="2" 
                                           Style="{StaticResource ComboBoxToggleButton}"
                                           Focusable="false"
                                           IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"/>
-                            
-                            <!-- Display Area of the selected item -->
+
                             <ContentPresenter x:Name="contentPresenter"
                                               Content="{TemplateBinding SelectionBoxItem}"
                                               ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
@@ -477,8 +460,7 @@
                                               Margin="{TemplateBinding Padding}"
                                               TextElement.Foreground="{TemplateBinding Foreground}"
                                               IsHitTestVisible="false"/>
-                            
-                            <!-- Popup showing the dropdown items -->
+
                             <Popup x:Name="PART_Popup"
                                    Grid.ColumnSpan="2"
                                    IsOpen="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}}"
@@ -521,7 +503,6 @@
             </Setter>
         </Style>
 
-        <!-- ===================== RECOVERY ACCENTS ===================== -->
         <Style TargetType="Border" x:Key="RecoveryCardStyle">
             <Setter Property="Background" Value="#0A0B0E"/>
             <Setter Property="BorderBrush" Value="#007ACC"/>
@@ -575,7 +556,6 @@
             </Setter>
         </Style>
 
-        <!-- ===================== CHECKBOX ===================== -->
         <Style TargetType="CheckBox" x:Key="PremiumCheckBoxStyle">
             <Setter Property="Foreground" Value="#C8CBCF"/>
             <Setter Property="FontSize" Value="13"/>
@@ -619,7 +599,6 @@
             </Setter>
         </Style>
 
-        <!-- ===================== RADIOBUTTON ===================== -->
         <Style TargetType="RadioButton" x:Key="PremiumRadioButtonStyle">
             <Setter Property="Foreground" Value="#C8CBCF"/>
             <Setter Property="FontSize" Value="13"/>
@@ -636,7 +615,7 @@
                                         VerticalAlignment="Center">
                                     <Grid>
                                         <Ellipse x:Name="dot" Width="8" Height="8"
-                                                 Fill="#2D72D9" Visibility="Collapsed">
+                                              Fill="#2D72D9" Visibility="Collapsed">
                                             <Ellipse.Effect>
                                                 <DropShadowEffect Color="#2D72D9" BlurRadius="6" ShadowDepth="0" Opacity="0.8"/>
                                             </Ellipse.Effect>
@@ -661,7 +640,6 @@
             </Setter>
         </Style>
 
-        <!-- ===================== DATAGRID ===================== -->
         <Style TargetType="DataGrid" x:Key="PremiumDataGridStyle">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="RowBackground" Value="#1A1C23"/>
@@ -679,10 +657,6 @@
             <Setter Property="CanUserResizeRows" Value="False"/>
             <Setter Property="RowHeaderWidth" Value="0"/>
             <Setter Property="RowHeight" Value="40"/>
-            <!-- Virtualisierung: nur sichtbare Zeilen rendern, Container wiederverwenden -->
-            <Setter Property="EnableRowVirtualization" Value="True"/>
-            <Setter Property="VirtualizingPanel.VirtualizationMode" Value="Recycling"/>
-            <Setter Property="ScrollViewer.CanContentScroll" Value="True"/>
             <Setter Property="CellStyle">
                 <Setter.Value>
                     <Style TargetType="DataGridCell">
@@ -759,7 +733,6 @@
             </Setter>
         </Style>
 
-        <!-- Premium Dark-Themed TabControl & TabItem Styles -->
         <Style TargetType="TabControl" x:Key="PremiumTabControlStyle">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderBrush" Value="Transparent"/>
@@ -788,7 +761,7 @@
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="TabBorder" Property="Background" Value="#242731"/>
                                 <Setter TargetName="TabBorder" Property="BorderBrush" Value="#323642"/>
-                                <Setter Property="Foreground" Value="#C2C5CC"/>
+                                <Setter TargetName="TabBorder" Property="BorderBrush" Value="#C2C5CC"/>
                             </Trigger>
                             <Trigger Property="IsSelected" Value="True">
                                 <Setter TargetName="TabBorder" Property="Background" Value="#111218"/>
@@ -803,11 +776,10 @@
         </Style>
     </Window.Resources>
 
-    <!-- APP BODY -->
     <Border Background="#121212" CornerRadius="10" BorderBrush="#2D72D9" BorderThickness="1">
         <Grid>
             <Grid.RowDefinitions>
-                <RowDefinition Height="35"/> <!-- TITLE BAR -->
+                <RowDefinition Height="35"/>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="220"/>
@@ -817,7 +789,6 @@
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
-            <!-- TITLE BAR -->
             <Border Grid.Row="0" Grid.ColumnSpan="2" Background="#0A0B0E" MouseLeftButtonDown="TitleBar_MouseDown" CornerRadius="10,10,0,0">
                 <Grid>
                     <Grid.ColumnDefinitions>
@@ -837,7 +808,6 @@
                 </Grid>
             </Border>
 
-            <!-- ===== SIDEBAR ===== -->
             <Border Grid.Row="1" Grid.RowSpan="3" Grid.Column="0"
                     Background="#0E0F13" BorderBrush="#1E2028" BorderThickness="0,0,1,0" CornerRadius="0,0,0,10">
                 <Grid>
@@ -847,7 +817,6 @@
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
-                    <!-- Nav Items -->
                     <StackPanel Grid.Row="1" Margin="10,20,10,0">
                         <TextBlock Text="HAUPTMENÜ" Style="{StaticResource SectionHeader}" Margin="14,0,0,8"/>
 
@@ -866,10 +835,8 @@
                         <RadioButton Style="{StaticResource NavItemStyle}"
                                      Tag="🚀" Content="System-Leistung"
                                      x:Name="NavPerformance"/>
-
                     </StackPanel>
 
-                    <!-- Version Info -->
                     <StackPanel Grid.Row="2" Margin="20,0,20,20">
                         <Separator Background="#1E2028" Margin="0,0,0,12"/>
                         <TextBlock Text="v2.0 · .NET 10 · WPF" Foreground="#3A3D45" FontSize="10"/>
@@ -877,10 +844,8 @@
                 </Grid>
             </Border>
 
-            <!-- ===== MAIN CONTENT (Tab Pages) ===== -->
             <Grid Grid.Row="1" Grid.Column="1" Margin="30,25,30,15">
 
-                <!-- Tab 1: Update Center -->
                 <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,10,0">
                     <ScrollViewer.Style>
                         <Style TargetType="ScrollViewer">
@@ -899,26 +864,23 @@
                             <RowDefinition Height="*"/>
                         </Grid.RowDefinitions>
 
-                        <!-- Header -->
                         <StackPanel Grid.Row="0">
                             <TextBlock Text="Update Center" Foreground="White" FontSize="22" FontWeight="Light" Margin="0,0,0,4"/>
                             <TextBlock Text="Software- und Treiber-Updates — Deep-Scan über alle Scopes" Foreground="#4D9EFF" FontSize="12" Margin="0,0,0,22"/>
                         </StackPanel>
 
-                        <!-- Side-by-Side Cards -->
                         <Grid Grid.Row="1" Margin="0,0,0,15">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="15"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            
-                            <!-- Software Updates Card -->
+
                             <Border Grid.Column="0" Style="{StaticResource CardStyle}" Margin="0">
                                 <StackPanel>
                                     <TextBlock Text="Software Updates (Stabil)" Style="{StaticResource CardTitle}"/>
                                     <TextBlock Style="{StaticResource CardDesc}" Height="45" TextWrapping="Wrap"
-                                               Text="Deep-Scan über Machine-Scope, User-Scope und MS Store. Findet alle offiziellen stabilen Updates."/>
+                                              Text="Deep-Scan über Machine-Scope, User-Scope und MS Store. Findet alle offiziellen stabilen Updates."/>
                                     <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
                                         <Button Content="🔍  Updates suchen"    Command="{Binding CheckUpdatesCommand}"   Style="{StaticResource ModernButtonStyle}" FontSize="12" Padding="12,6" Width="140" Margin="0,0,8,0"/>
                                         <Button Content="⬇  Installieren" Command="{Binding InstallUpdatesCommand}" Style="{StaticResource ModernButtonStyle}" FontSize="12" Padding="12,6" Width="120" Margin="0"/>
@@ -926,7 +888,6 @@
                                 </StackPanel>
                             </Border>
 
-                            <!-- Hardware Drivers Card -->
                             <Border Grid.Column="2" Style="{StaticResource CardStyle}" Margin="0">
                                 <StackPanel>
                                     <TextBlock Text="Hardware Treiber Updates" Style="{StaticResource CardTitle}"/>
@@ -940,7 +901,6 @@
                             </Border>
                         </Grid>
 
-                        <!-- Updates DataGrid -->
                         <DataGrid Grid.Row="2" Style="{StaticResource PremiumDataGridStyle}"
                                   ItemsSource="{Binding UpdatesCollection}"
                                   FocusVisualStyle="{x:Null}"
@@ -995,7 +955,6 @@
                     </Grid>
                 </ScrollViewer>
 
-                <!-- Tab 2: System-Reparatur -->
                 <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,10,0">
                     <ScrollViewer.Style>
                         <Style TargetType="ScrollViewer">
@@ -1015,14 +974,13 @@
                             <StackPanel>
                                 <TextBlock Text="Windows Kernreparatur (DISM + SFC)" Style="{StaticResource CardTitle}"/>
                                 <TextBlock Style="{StaticResource CardDesc}"
-                                           Text="Führt zunächst DISM /RestoreHealth aus, um den Windows Component Store zu reparieren. Anschließend prüft SFC /scannow alle geschützten Systemdateien und stellt beschädigte Dateien wieder her."/>
+                                    Text="Führt zunächst DISM /RestoreHealth aus, um den Windows Component Store zu reparieren. Anschließend prüft SFC /scannow alle geschützten Systemdateien und stellt beschädigte Dateien wieder her."/>
                                 <Button Content="🛠️  System tiefenprüfen" Command="{Binding RepairSystemCommand}" Style="{StaticResource ModernButtonStyle}" Width="200" HorizontalAlignment="Left"/>
                             </StackPanel>
                         </Border>
                     </StackPanel>
                 </ScrollViewer>
 
-                <!-- Tab 3: Bereinigung & Optimierung -->
                 <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,10,0">
                     <ScrollViewer.Style>
                         <Style TargetType="ScrollViewer">
@@ -1038,17 +996,15 @@
                         <TextBlock Text="Bereinigung &amp; Optimierung" Foreground="White" FontSize="22" FontWeight="Light" Margin="0,0,0,4"/>
                         <TextBlock Text="Systemspeicher freigeben und Netzwerk-Overhead reduzieren" Foreground="#4D9EFF" FontSize="12" Margin="0,0,0,22"/>
 
-                        <!-- Master Cleanup -->
                         <Border Style="{StaticResource CardStyle}">
                             <StackPanel>
                                 <TextBlock Text="Master-Bereinigung" Style="{StaticResource CardTitle}"/>
                                 <TextBlock Style="{StaticResource CardDesc}"
-                                           Text="Löscht Temp-Dateien auf System-Partitionen, leert den Papierkorb (alle Laufwerke), entfernt DirectX-Shadercaches und Thumbnail-Caches, säubert Prefetch sowie Windows Update Überbleibsel und flusht den DNS-Cache."/>
+                                            Text="Löscht Temp-Dateien auf System-Partitionen, leert den Papierkorb (alle Laufwerke), entfernt DirectX-Shadercaches und Thumbnail-Caches, säubert Prefetch sowie Windows Update Überbleibsel und flusht den DNS-Cache."/>
                                 <Button Content="🧹  System reinigen" Command="{Binding CleanupSystemCommand}" Style="{StaticResource ModernButtonStyle}" Width="175" HorizontalAlignment="Left"/>
                             </StackPanel>
                         </Border>
 
-                        <!-- P2P Deaktivieren -->
                         <Border Style="{StaticResource CardStyle}">
                             <StackPanel>
                                 <TextBlock Text="Netzwerk &amp; Latenz Optimieren" Style="{StaticResource CardTitle}"/>
@@ -1060,7 +1016,6 @@
                     </StackPanel>
                 </ScrollViewer>
 
-                <!-- Tab 4: Software & Apps Manager -->
                 <Grid>
                     <Grid.Style>
                         <Style TargetType="Grid">
@@ -1073,62 +1028,66 @@
                         </Style>
                     </Grid.Style>
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/> <!-- Header -->
-                        <RowDefinition Height="*"/>    <!-- TabControl with separate sub-views -->
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
-                    <!-- Header -->
                     <StackPanel Grid.Row="0" Margin="0,0,0,15">
                         <TextBlock Text="Software &amp; Apps" Foreground="White" FontSize="22" FontWeight="Light" Margin="0,0,0,4"/>
                         <TextBlock Text="Systemspezifische Programme &amp; Store Apps getrennt verwalten, live filtern und tiefenreinigen" Foreground="#4D9EFF" FontSize="12"/>
                     </StackPanel>
 
-                    <!-- Modern WPF TabControl for separating Classic vs Store Apps -->
                     <TabControl Grid.Row="1" Style="{StaticResource PremiumTabControlStyle}">
-                        
-                        <!-- Reiter 1: System-Programme (Klassische Desktop-Software) -->
+
                         <TabItem Header="System-Programme" Style="{StaticResource PremiumTabItemStyle}">
                             <Grid Margin="0,15,0,0">
                                 <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/> <!-- Search bar -->
-                                    <RowDefinition Height="*"/>    <!-- DataGrid -->
-                                    <RowDefinition Height="Auto"/> <!-- Controls -->
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
 
-                                <!-- Search Bar -->
                                 <Grid Grid.Row="0" Margin="0,0,0,15">
-                                    <TextBox Style="{StaticResource ModernTextBoxStyle}" 
-                                             Tag="Nach Name filtern..."
-                                             Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-                                             Height="38" VerticalContentAlignment="Center"/>
-                                    <TextBlock Text="🔍" Foreground="#555A67" FontSize="14" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,15,0" IsHitTestVisible="False"/>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="220"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid Grid.Column="0">
+                                        <TextBox Style="{StaticResource ModernTextBoxStyle}" 
+                                                 Tag="Nach Name filtern..."
+                                                 Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                                                 Height="38" VerticalContentAlignment="Center"/>
+                                        <TextBlock Text="🔍" Foreground="#555A67" FontSize="14" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,15,0" IsHitTestVisible="False"/>
+                                    </Grid>
+                                    <ComboBox Grid.Column="1" Margin="12,0,0,0" Height="38"
+                                              Style="{StaticResource PremiumComboBoxStyle}"
+                                              ItemsSource="{Binding AvailableSortModes}"
+                                              SelectedItem="{Binding SoftwareSortMode}"
+                                              ToolTip="Sortierung ändern. Standardmäßig werden neue Apps oben angezeigt."/>
                                 </Grid>
 
-                                <!-- DataGrid -->
                                 <DataGrid Grid.Row="1" Style="{StaticResource PremiumDataGridStyle}"
-                                          ItemsSource="{Binding FilteredSoftware}"
+                                          ItemsSource="{Binding SoftwareView}"
                                           SelectedItem="{Binding SelectedSoftware, Mode=TwoWay}"
                                           Margin="0,0,0,15" FocusVisualStyle="{x:Null}">
                                     <DataGrid.Columns>
                                         <DataGridTextColumn Header="Programmname" Binding="{Binding Name}" Width="*" />
                                         <DataGridTextColumn Header="Version" Binding="{Binding DisplayVersion}" Width="140" />
                                         <DataGridTextColumn Header="Herausgeber" Binding="{Binding Publisher}" Width="200" />
+                                        <DataGridTextColumn Header="Installiert am" Binding="{Binding InstallDateDisplay}" Width="145" />
                                         <DataGridTextColumn Header="Größe" Binding="{Binding EstimatedSize}" Width="110" />
                                     </DataGrid.Columns>
                                 </DataGrid>
 
-                                <!-- Controls -->
                                 <Border Grid.Row="2" Background="#1A1C23" BorderBrush="#22252D" BorderThickness="1" CornerRadius="8" Padding="15,12">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
-                                        
                                         <CheckBox Grid.Column="0" Content="Restliche Dateien und leere Ordner automatisch löschen" 
                                                   IsChecked="{Binding CleanLeftovers}"
                                                   Style="{StaticResource PremiumCheckBoxStyle}" />
-                                        
                                         <Button Grid.Column="1" Content="🗑  Deinstallieren" 
                                                 Command="{Binding UninstallCommand}" 
                                                 Style="{StaticResource ModernButtonStyle}" 
@@ -1138,49 +1097,55 @@
                             </Grid>
                         </TabItem>
 
-                        <!-- Reiter 2: Windows Apps (Microsoft Store / UWP Apps) -->
                         <TabItem Header="Windows Apps" Style="{StaticResource PremiumTabItemStyle}">
                             <Grid Margin="0,15,0,0">
                                 <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/> <!-- Search bar -->
-                                    <RowDefinition Height="*"/>    <!-- DataGrid -->
-                                    <RowDefinition Height="Auto"/> <!-- Controls -->
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
 
-                                <!-- Search Bar -->
                                 <Grid Grid.Row="0" Margin="0,0,0,15">
-                                    <TextBox Style="{StaticResource ModernTextBoxStyle}" 
-                                             Tag="Nach Name filtern..."
-                                             Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-                                             Height="38" VerticalContentAlignment="Center"/>
-                                    <TextBlock Text="🔍" Foreground="#555A67" FontSize="14" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,15,0" IsHitTestVisible="False"/>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="220"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid Grid.Column="0">
+                                        <TextBox Style="{StaticResource ModernTextBoxStyle}" 
+                                                 Tag="Nach Name filtern..."
+                                                 Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                                                 Height="38" VerticalContentAlignment="Center"/>
+                                        <TextBlock Text="🔍" Foreground="#555A67" FontSize="14" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,15,0" IsHitTestVisible="False"/>
+                                    </Grid>
+                                    <ComboBox Grid.Column="1" Margin="12,0,0,0" Height="38"
+                                              Style="{StaticResource PremiumComboBoxStyle}"
+                                              ItemsSource="{Binding AvailableSortModes}"
+                                              SelectedItem="{Binding UwpSortMode}"
+                                              ToolTip="Sortierung ändern. Standardmäßig werden neue Apps oben angezeigt."/>
                                 </Grid>
 
-                                <!-- DataGrid -->
                                 <DataGrid Grid.Row="1" Style="{StaticResource PremiumDataGridStyle}"
-                                          ItemsSource="{Binding FilteredUwpApps}"
+                                          ItemsSource="{Binding UwpView}"
                                           SelectedItem="{Binding SelectedUwpApp, Mode=TwoWay}"
                                           Margin="0,0,0,15" FocusVisualStyle="{x:Null}">
                                     <DataGrid.Columns>
                                         <DataGridTextColumn Header="Programmname" Binding="{Binding Name}" Width="*" />
                                         <DataGridTextColumn Header="Version" Binding="{Binding DisplayVersion}" Width="140" />
                                         <DataGridTextColumn Header="Herausgeber" Binding="{Binding Publisher}" Width="200" />
+                                        <DataGridTextColumn Header="Installiert am" Binding="{Binding InstallDateDisplay}" Width="145" />
                                         <DataGridTextColumn Header="Größe" Binding="{Binding EstimatedSize}" Width="110" />
                                     </DataGrid.Columns>
                                 </DataGrid>
 
-                                <!-- Controls -->
                                 <Border Grid.Row="2" Background="#1A1C23" BorderBrush="#22252D" BorderThickness="1" CornerRadius="8" Padding="15,12">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
-                                        
                                         <CheckBox Grid.Column="0" Content="Restliche Dateien und leere Ordner automatisch löschen" 
                                                   IsChecked="{Binding CleanLeftovers}"
                                                   Style="{StaticResource PremiumCheckBoxStyle}" />
-                                        
                                         <Button Grid.Column="1" Content="🗑  Deinstallieren" 
                                                 Command="{Binding UninstallCommand}" 
                                                 Style="{StaticResource ModernButtonStyle}" 
@@ -1192,7 +1157,6 @@
                     </TabControl>
                 </Grid>
 
-                <!-- Tab 5: System-Leistung -->
                 <Grid>
                     <Grid.Style>
                         <Style TargetType="Grid">
@@ -1205,18 +1169,16 @@
                         </Style>
                     </Grid.Style>
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/> <!-- Header -->
-                        <RowDefinition Height="Auto"/> <!-- RAM Card -->
-                        <RowDefinition Height="*"/>    <!-- Autostart Card/Grid -->
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
-                    <!-- Header -->
                     <StackPanel Grid.Row="0" Margin="0,0,0,15">
                         <TextBlock Text="System-Leistung" Foreground="White" FontSize="22" FontWeight="Light" Margin="0,0,0,4"/>
                         <TextBlock Text="Arbeitsspeicher sicher optimieren und Autostart-Programme kontrollieren" Foreground="#4D9EFF" FontSize="12"/>
                     </StackPanel>
 
-                    <!-- RAM Card -->
                     <Border Grid.Row="1" Style="{StaticResource CardStyle}" Margin="0,0,0,15">
                         <Grid>
                             <Grid.ColumnDefinitions>
@@ -1235,14 +1197,12 @@
                         </Grid>
                     </Border>
 
-                    <!-- Autostart Card -->
                     <Grid Grid.Row="2">
                         <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/> <!-- Search bar -->
-                            <RowDefinition Height="*"/>    <!-- DataGrid -->
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
                         </Grid.RowDefinitions>
 
-                        <!-- Search Bar -->
                         <Grid Grid.Row="0" Margin="0,0,0,15">
                             <TextBox Style="{StaticResource ModernTextBoxStyle}" 
                                      Tag="Autostart durchsuchen..."
@@ -1251,7 +1211,6 @@
                             <TextBlock Text="🔍" Foreground="#555A67" FontSize="14" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,15,0" IsHitTestVisible="False"/>
                         </Grid>
 
-                        <!-- DataGrid -->
                         <DataGrid Grid.Row="1" Style="{StaticResource PremiumDataGridStyle}"
                                   ItemsSource="{Binding FilteredStartupItems}"
                                   Margin="0,0,0,15" FocusVisualStyle="{x:Null}">
@@ -1304,10 +1263,8 @@
                     </Grid>
                 </Grid>
 
-
             </Grid>
 
-            <!-- ===== STATUS BAR ===== -->
             <Grid Grid.Row="2" Grid.Column="1" Margin="30,0,30,12">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
@@ -1358,14 +1315,12 @@
                 </Button>
             </Grid>
 
-            <!-- ===== LIVE CONSOLE ===== -->
             <Border Grid.Row="3" Grid.Column="1" Margin="30,0,30,20"
                     Background="#050505" BorderBrush="#007ACC" BorderThickness="1.5" CornerRadius="8">
                 <Border.Effect>
                     <DropShadowEffect Color="#007ACC" BlurRadius="8" Opacity="0.35" ShadowDepth="0"/>
                 </Border.Effect>
                 <Grid>
-                    <!-- Classic Console Container (Visible for other tabs) -->
                     <Grid x:Name="ClassicConsoleContainer">
                         <Grid.Style>
                             <Style TargetType="Grid">
@@ -1382,7 +1337,6 @@
                             <RowDefinition Height="*"/>
                         </Grid.RowDefinitions>
 
-                        <!-- Header -->
                         <Border Grid.Row="0" Background="#0C1014" CornerRadius="8,8,0,0" Padding="15,7" BorderBrush="#1C2025" BorderThickness="0,0,0,1">
                             <Grid>
                                 <TextBlock Text="▶  LIVE EXECUTION CONSOLE  //  SYSTEM.OVERRIDE"
@@ -1394,7 +1348,6 @@
                             </Grid>
                         </Border>
 
-                        <!-- Body (Full-width Text Terminal for classic view) -->
                         <TextBox Grid.Row="1" x:Name="TxtLog"
                                  Text="{Binding LogText, Mode=OneWay}"
                                  IsReadOnly="True" TextWrapping="Wrap"
@@ -1405,9 +1358,6 @@
                                  TextChanged="TxtLog_TextChanged"/>
                     </Grid>
 
-
-
-                    <!-- Modern Update Dashboard (Visible only when Updates is active) -->
                     <Border x:Name="ModernUpdateDashboard" Padding="25,15"
                             UseLayoutRounding="True" SnapsToDevicePixels="True" TextOptions.TextFormattingMode="Display">
                         <Border.Style>

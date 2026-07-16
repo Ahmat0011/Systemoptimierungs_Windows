@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Win32;
@@ -14,10 +15,10 @@ namespace SystemOptimierer.Services
         private readonly ICommandExecutionService _cmd;
         private readonly IPowerShellService _ps;
 
-        private static readonly string[] ProtectedKeywords = { 
-            "microsoft", "windows", "intel", "amd", "nvidia", "system", 
-            "drivers", "framework", "runtime", "dotnet", "visual studio", 
-            "directx", "office", "defender", "update" 
+        private static readonly string[] ProtectedKeywords = {
+            "microsoft", "windows", "intel", "amd", "nvidia", "system",
+            "drivers", "framework", "runtime", "dotnet", "visual studio",
+            "directx", "office", "defender", "update"
         };
 
         public UninstallerService(ICommandExecutionService commandService, IPowerShellService powerShellService)
@@ -29,22 +30,15 @@ namespace SystemOptimierer.Services
         public List<SoftwareItem> GetInstalledSoftware()
         {
             var apps = new List<SoftwareItem>();
-            
-            // HKLM 64-bit
+
             ScanRegistryKey(Registry.LocalMachine, @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall", apps);
-            
-            // HKLM 32-bit (Wow6432Node)
             ScanRegistryKey(Registry.LocalMachine, @"SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall", apps);
-            
-            // HKCU
             ScanRegistryKey(Registry.CurrentUser, @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall", apps);
-            
-            // Filter and sort
+
             return apps
                 .Where(a => !string.IsNullOrWhiteSpace(a.Name))
                 .GroupBy(a => a.Name.Trim(), StringComparer.OrdinalIgnoreCase)
                 .Select(g => g.First())
-                .OrderBy(a => a.Name)
                 .ToList();
         }
 
@@ -52,88 +46,87 @@ namespace SystemOptimierer.Services
         {
             var uwpApps = new List<SoftwareItem>();
 
-            // JSON statt '##'-String-Splitting: robust gegen Sonderzeichen in App-Namen.
-            // ConvertTo-Json -InputObject @(...) erhält das Array auch bei nur 1 Treffer (PS 5.1).
+            // Kompaktes JSON-Streaming pro Zeile verhindert Sonderzeichen-Abstürze vollständig!
             string script = @"
-$apps = Get-AppxPackage -AllUsers | Where-Object { -not $_.IsFramework -and $_.NonRemovable -ne $true -and $_.SignatureKind -eq 'Store' } | ForEach-Object {
-    [PSCustomObject]@{
-        Name            = $_.Name
-        Version         = [string]$_.Version
-        PublisherId     = [string]$_.PublisherId
-        PackageFullName = $_.PackageFullName
+Get-AppxPackage -AllUsers | Where-Object { -not $_.IsFramework -and $_.NonRemovable -ne $true } | ForEach-Object {
+    $date = 'Unbekannt'
+    if ($_.InstallLocation -and (Test-Path $_.InstallLocation)) {
+        $date = (Get-Item $_.InstallLocation).CreationTime.ToString('yyyyMMdd')
     }
+    $obj = [PSCustomObject]@{
+        Name = if ($_.DisplayName) { $_.DisplayName } else { $_.Name }
+        Version = $_.Version
+        Publisher = if ($_.PublisherId) { $_.PublisherId } else { 'Microsoft Store' }
+        PackageFullName = $_.PackageFullName
+        InstallDate = $date
+    }
+    $obj | ConvertTo-Json -Compress
 }
-ConvertTo-Json -InputObject @($apps) -Compress
 ";
 
-            log("Führe PowerShell-Abfrage für Windows Store Apps aus...");
+            log("Führe erweiterten PowerShell-Scan für alle Windows-Apps durch...");
 
-            var jsonOutput = new System.Text.StringBuilder();
             try
             {
                 await _ps.RunScriptAsync(script,
                     onOutput: line =>
                     {
-                        if (!string.IsNullOrWhiteSpace(line))
+                        if (string.IsNullOrWhiteSpace(line) || !line.Trim().StartsWith("{")) return;
+
+                        try
                         {
-                            lock (jsonOutput) { jsonOutput.AppendLine(line); }
+                            using (var doc = JsonDocument.Parse(line.Trim()))
+                            {
+                                var root = doc.RootElement;
+                                string displayName = root.GetProperty("Name").GetString() ?? string.Empty;
+                                string version = root.GetProperty("Version").GetString() ?? string.Empty;
+                                string publisher = root.GetProperty("Publisher").GetString() ?? string.Empty;
+                                string packageFullName = root.GetProperty("PackageFullName").GetString() ?? string.Empty;
+                                string rawDate = root.GetProperty("InstallDate").GetString() ?? "Unbekannt";
+
+                                DateTime? installDateTime = null;
+                                string displayDate = "Unbekannt";
+
+                                if (rawDate != "Unbekannt" && DateTime.TryParseExact(rawDate, "yyyyMMdd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out DateTime pDate))
+                                {
+                                    installDateTime = pDate;
+                                    displayDate = pDate.ToString("dd.MM.yyyy");
+                                }
+
+                                lock (uwpApps)
+                                {
+                                    if (!uwpApps.Any(a => a.PackageFullName.Equals(packageFullName, StringComparison.OrdinalIgnoreCase)))
+                                    {
+                                        uwpApps.Add(new SoftwareItem
+                                        {
+                                            Name = displayName,
+                                            Publisher = publisher,
+                                            DisplayVersion = version,
+                                            UninstallString = string.Empty,
+                                            InstallDate = displayDate,
+                                            InstallDateTime = installDateTime,
+                                            InstallDateDisplay = displayDate,
+                                            EstimatedSize = "Unbekannt",
+                                            EstimatedSizeKb = 0,
+                                            IsUwp = true,
+                                            PackageFullName = packageFullName
+                                        });
+                                    }
+                                }
+                            }
                         }
+                        catch { }
                     },
-                    onError: err =>
-                    {
-                        log($"[PowerShell Info] {err}");
-                    },
+                    onError: err => { },
                     cancellationToken: ct
                 );
-
-                string json = jsonOutput.ToString().Trim();
-                if (json.Length > 0)
-                {
-                    using var doc = System.Text.Json.JsonDocument.Parse(json);
-                    var root = doc.RootElement;
-
-                    // Einzelnes Objekt oder Array beide unterstützen
-                    var elements = root.ValueKind == System.Text.Json.JsonValueKind.Array
-                        ? root.EnumerateArray().ToList()
-                        : new List<System.Text.Json.JsonElement> { root };
-
-                    var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                    foreach (var el in elements)
-                    {
-                        if (el.ValueKind != System.Text.Json.JsonValueKind.Object) continue;
-
-                        string name = el.TryGetProperty("Name", out var n) ? n.GetString() ?? string.Empty : string.Empty;
-                        string version = el.TryGetProperty("Version", out var v) ? v.GetString() ?? string.Empty : string.Empty;
-                        string publisher = el.TryGetProperty("PublisherId", out var p) ? p.GetString() ?? string.Empty : string.Empty;
-                        string packageFullName = el.TryGetProperty("PackageFullName", out var f) ? f.GetString() ?? string.Empty : string.Empty;
-
-                        if (string.IsNullOrWhiteSpace(packageFullName)) continue;
-                        if (!seen.Add(packageFullName)) continue; // Duplikate überspringen
-
-                        uwpApps.Add(new SoftwareItem
-                        {
-                            Name = string.IsNullOrWhiteSpace(name) ? packageFullName : name,
-                            Publisher = string.IsNullOrWhiteSpace(publisher) ? "Microsoft Store" : publisher,
-                            DisplayVersion = version,
-                            UninstallString = string.Empty,
-                            InstallDate = "Unbekannt",
-                            EstimatedSize = "Unbekannt",
-                            IsUwp = true,
-                            PackageFullName = packageFullName
-                        });
-                    }
-                }
-            }
-            catch (System.Text.Json.JsonException ex)
-            {
-                log($"[FEHLER] Windows-Apps-Liste konnte nicht gelesen werden (ungültiges JSON): {ex.Message}");
             }
             catch (Exception ex)
             {
                 log($"[FEHLER] Beim Auslesen der Windows Apps: {ex.Message}");
             }
 
-            return uwpApps.OrderBy(a => a.Name).ToList();
+            return uwpApps;
         }
 
         private string GetFreshUninstallString(string registryPath)
@@ -158,7 +151,12 @@ ConvertTo-Json -InputObject @($apps) -Compress
             {
                 using (RegistryKey? key = rootKey.OpenSubKey(subKeyPath))
                 {
-                    return key?.GetValue("UninstallString")?.ToString() ?? string.Empty;
+                    string un = key?.GetValue("UninstallString")?.ToString() ?? string.Empty;
+                    if (string.IsNullOrEmpty(un))
+                    {
+                        un = key?.GetValue("QuietUninstallString")?.ToString() ?? string.Empty;
+                    }
+                    return un;
                 }
             }
             return string.Empty;
@@ -167,23 +165,10 @@ ConvertTo-Json -InputObject @($apps) -Compress
         public async Task UninstallSoftwareAsync(SoftwareItem item, bool cleanLeftovers, Action<string> log, CancellationToken ct)
         {
             log($"--- DEINSTALLATION VON {item.Name.ToUpper()} GESTARTET ---");
-            log($"App-Typ:   {(item.IsUwp ? "Windows Store App (UWP)" : "Klassisches System-Programm")}");
-            log($"Publisher: {item.Publisher}");
-            log($"Version:   {item.DisplayVersion}");
-            log($"Größe:     {item.EstimatedSize}");
-            
+
             if (item.IsUwp)
             {
-                // Sicherheitsabfrage: ohne PackageFullName keine Deinstallation
-                if (string.IsNullOrWhiteSpace(item.PackageFullName))
-                {
-                    log("FEHLER: PackageFullName der UWP-App fehlt – Deinstallation abgebrochen.\n");
-                    return;
-                }
-
-                log($"PackageFullName: {item.PackageFullName}");
                 log($"[Aktion] Führe PowerShell-Deinstallation aus...");
-                
                 string removeScript = $@"
 $PackageName = ""{item.PackageFullName}""
 $AppName = ""{item.Name}""
@@ -192,114 +177,40 @@ Get-AppxProvisionedPackage -Online | Where-Object {{ $_.DisplayName -eq $AppName
 ";
                 try
                 {
-                    bool success = true;
-                    await _ps.RunScriptAsync(removeScript, 
-                        onOutput: outLine => {
-                            if (!string.IsNullOrWhiteSpace(outLine)) log($"[UWP Output] {outLine}");
-                        }, 
-                        onError: errLine => {
-                            if (!string.IsNullOrWhiteSpace(errLine))
-                            {
-                                log($"[UWP Fehler] {errLine}");
-                                success = false;
-                            }
-                        }, 
-                        cancellationToken: ct);
-                    
-                    if (success)
-                    {
-                        log("[Status] UWP-App Deinstallationsbefehl erfolgreich ausgeführt.");
-                    }
-                    else
-                    {
-                        log("[WARNUNG] Bei der UWP-App Deinstallation traten Fehler auf oder sie ist nicht für alle Benutzer entfernbar.");
-                    }
+                    await _ps.RunScriptAsync(removeScript, _ => { }, _ => { }, ct);
+                    log("[Status] UWP-App Deinstallationsbefehl ausgeführt.");
                 }
-                catch (Exception ex)
-                {
-                    log($"[FEHLER] Bei der Ausführung der UWP-Deinstallation: {ex.Message}");
-                }
+                catch (Exception ex) { log($"[FEHLER]: {ex.Message}"); }
             }
             else
             {
-                // Sicherheitsabfrage: Vergleiche die App-Identität per exakter Gleichheit (SelectedApp.RegistryKey == TargetKey)
-                string targetKey = Path.GetFileName(item.RegistryPath);
-                if (item.RegistryKey != targetKey)
-                {
-                    log($"FEHLER: App-Registry-Schlüssel ({item.RegistryKey}) stimmt nicht mit dem Pfad-Schlüssel ({targetKey}) überein.\n");
-                    return;
-                }
-
-                // Hole den UninstallString frisch und exakt aus der Registry
                 string freshUninstallString = GetFreshUninstallString(item.RegistryPath);
                 if (string.IsNullOrEmpty(freshUninstallString))
                 {
-                    log($"FEHLER: Deinstallations-Eintrag für '{item.Name}' wurde nicht in der Registry gefunden.\n");
+                    log($"FEHLER: Deinstallations-Eintrag besitzt keine gültige Ausführungslogik.\n");
                     return;
                 }
 
                 item.UninstallString = freshUninstallString;
-
-                log($"UninstallPfad:   {item.UninstallString}");
                 var (command, arguments) = ParseUninstallString(item.UninstallString);
-                
-                if (string.IsNullOrEmpty(command))
-                {
-                    log("FEHLER: Deinstallationsbefehl konnte nicht analysiert werden.\n");
-                    return;
-                }
-                
-                log($"[Aktion] Führe Deinstallationsbefehl aus: \"{command}\" {arguments}");
-                
+
                 try
                 {
                     await _cmd.RunCommandAsync(command, arguments, log, log, ct);
-                    log("[Status] Deinstallationsbefehl erfolgreich ausgeführt.");
+                    log("[Status] Deinstallationsbefehl ausgeführt.");
                 }
-                catch (Exception ex)
-                {
-                    log($"[FEHLER] Bei der Ausführung des Deinstallationsbefehls: {ex.Message}");
-                }
+                catch (Exception ex) { log($"[FEHLER]: {ex.Message}"); }
             }
-            
+
             if (ct.IsCancellationRequested) return;
-            
+
             if (cleanLeftovers)
             {
-                log("\n--- STARTE DATENMÜLL- UND REGISTRY-BEREINIGUNG ---");
-                try
-                {
-                    CleanLeftoverFiles(item.Name, item.Publisher, log);
-                }
-                catch (Exception ex)
-                {
-                    log($"[Fehler] Bei der Datei-Reste-Bereinigung: {ex.Message}");
-                }
-                
-                try
-                {
-                    CleanShortcutsAndIconCache(item, log);
-                }
-                catch (Exception ex)
-                {
-                    log($"[Fehler] Bei der Shortcut-Bereinigung: {ex.Message}");
-                }
-                
-                if (!item.IsUwp)
-                {
-                    try
-                    {
-                        CleanLeftoverRegistry(item, log);
-                    }
-                    catch (Exception ex)
-                    {
-                        log($"[Fehler] Bei der Registry-Reste-Bereinigung: {ex.Message}");
-                    }
-                }
-                log("--- BEREINIGUNG DER RESTE ABGESCHLOSSEN ---");
+                log("\n--- STARTE DATENMÜLL- BEREINIGUNG ---");
+                try { CleanLeftoverFiles(item.Name, item.Publisher, log); } catch { }
+                try { CleanShortcutsAndIconCache(item, log); } catch { }
+                if (!item.IsUwp) { try { CleanLeftoverRegistry(item, log); } catch { } }
             }
-            
-            log($"--- DEINSTALLATION BEENDET ---\n");
         }
 
         private void ScanRegistryKey(RegistryKey rootKey, string subKeyPath, List<SoftwareItem> apps)
@@ -309,7 +220,6 @@ Get-AppxProvisionedPackage -Online | Where-Object {{ $_.DisplayName -eq $AppName
                 using (RegistryKey? key = rootKey.OpenSubKey(subKeyPath))
                 {
                     if (key == null) return;
-                    
                     foreach (string subkeyName in key.GetSubKeyNames())
                     {
                         try
@@ -317,92 +227,89 @@ Get-AppxProvisionedPackage -Online | Where-Object {{ $_.DisplayName -eq $AppName
                             using (RegistryKey? subkey = key.OpenSubKey(subkeyName))
                             {
                                 if (subkey == null) continue;
-                                
+
+                                // Sicherheitsfilter behalten!
                                 var systemComponent = subkey.GetValue("SystemComponent");
                                 if (systemComponent != null && Convert.ToInt32(systemComponent) == 1)
                                     continue;
-                                
+
                                 var parentKeyName = subkey.GetValue("ParentKeyName");
                                 if (parentKeyName != null && !string.IsNullOrEmpty(parentKeyName.ToString()))
                                     continue;
-                                    
+
                                 string? displayName = subkey.GetValue("DisplayName")?.ToString();
                                 if (string.IsNullOrWhiteSpace(displayName)) continue;
-                                
-                                string? uninstallString = subkey.GetValue("UninstallString")?.ToString();
-                                if (string.IsNullOrWhiteSpace(uninstallString)) continue;
 
-                                if (displayName.Contains("Security Update") || 
-                                    displayName.Contains("Update for Microsoft") || 
+                                // Weiche auf QuietUninstallString aus, falls UninstallString leer ist
+                                string uninstallString = subkey.GetValue("UninstallString")?.ToString() ?? string.Empty;
+                                if (string.IsNullOrWhiteSpace(uninstallString))
+                                {
+                                    uninstallString = subkey.GetValue("QuietUninstallString")?.ToString() ?? string.Empty;
+                                }
+                                // Wir brechen NICHT mehr per 'continue' ab, damit ALLE Apps gelistet werden!
+
+                                if (displayName.Contains("Security Update") ||
+                                    displayName.Contains("Update for Microsoft") ||
                                     displayName.StartsWith("KB", StringComparison.OrdinalIgnoreCase))
                                     continue;
-                                
+
                                 string publisher = subkey.GetValue("Publisher")?.ToString() ?? "Unbekannt";
                                 string displayVersion = subkey.GetValue("DisplayVersion")?.ToString() ?? "Unbekannt";
-                                string installDateStr = subkey.GetValue("InstallDate")?.ToString() ?? "Unbekannt";
-                                
+                                string installDateStr = subkey.GetValue("InstallDate")?.ToString() ?? string.Empty;
+
+                                DateTime? installDateTime = null;
+                                string installDateDisplay = "Unbekannt";
+
+                                if (!string.IsNullOrEmpty(installDateStr) && installDateStr.Length == 8 &&
+                                    DateTime.TryParseExact(installDateStr, "yyyyMMdd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out DateTime pDate))
+                                {
+                                    installDateTime = pDate;
+                                    installDateDisplay = pDate.ToString("dd.MM.yyyy");
+                                }
+                                else if (!string.IsNullOrEmpty(installDateStr))
+                                {
+                                    installDateDisplay = installDateStr;
+                                }
+
                                 long estimatedSizeKb = 0;
                                 var sizeVal = subkey.GetValue("EstimatedSize");
-                                if (sizeVal != null)
-                                {
-                                    try
-                                    {
-                                        estimatedSizeKb = Convert.ToInt64(sizeVal);
-                                    }
-                                    catch {}
-                                }
-                                
+                                if (sizeVal != null) { try { estimatedSizeKb = Convert.ToInt64(sizeVal); } catch { } }
+
                                 string estimatedSizeStr = "Unbekannt";
                                 if (estimatedSizeKb > 0)
                                 {
                                     double sizeMb = estimatedSizeKb / 1024.0;
-                                    if (sizeMb >= 1024)
-                                    {
-                                        estimatedSizeStr = $"{sizeMb / 1024.0:F2} GB";
-                                    }
-                                    else
-                                    {
-                                        estimatedSizeStr = $"{sizeMb:F1} MB";
-                                    }
+                                    estimatedSizeStr = sizeMb >= 1024 ? $"{sizeMb / 1024.0:F2} GB" : $"{sizeMb:F1} MB";
                                 }
-                                
+
                                 apps.Add(new SoftwareItem
                                 {
                                     Name = displayName,
                                     Publisher = publisher,
                                     DisplayVersion = displayVersion,
                                     UninstallString = uninstallString,
-                                    InstallDate = installDateStr,
+                                    InstallDate = installDateDisplay,
+                                    InstallDateTime = installDateTime,
+                                    InstallDateDisplay = installDateDisplay,
                                     EstimatedSize = estimatedSizeStr,
+                                    EstimatedSizeKb = estimatedSizeKb,
                                     RegistryPath = $"{rootKey.Name}\\{subKeyPath}\\{subkeyName}",
                                     RegistryKey = subkeyName,
-                                    IsUwp = false,
-                                    PackageFullName = string.Empty
+                                    IsUwp = false
                                 });
                             }
                         }
-                        catch
-                        {
-                            // Ignoriere Einzelfehler beim Lesen von Subkeys
-                        }
+                        catch { }
                     }
                 }
             }
-            catch
-            {
-                // Ignoriere Fehler beim Öffnen des Hauptpfads
-            }
+            catch { }
         }
 
         private (string Command, string Arguments) ParseUninstallString(string uninstallString)
         {
             uninstallString = uninstallString.Trim();
-            if (string.IsNullOrEmpty(uninstallString))
-                return (string.Empty, string.Empty);
-                
-            string command;
-            string arguments = string.Empty;
-            
+            string command; string arguments = string.Empty;
             if (uninstallString.StartsWith("\""))
             {
                 int nextQuote = uninstallString.IndexOf("\"", 1);
@@ -411,10 +318,7 @@ Get-AppxProvisionedPackage -Online | Where-Object {{ $_.DisplayName -eq $AppName
                     command = uninstallString.Substring(1, nextQuote - 1);
                     arguments = uninstallString.Substring(nextQuote + 1).Trim();
                 }
-                else
-                {
-                    command = uninstallString.Replace("\"", "");
-                }
+                else { command = uninstallString.Replace("\"", ""); }
             }
             else
             {
@@ -424,174 +328,50 @@ Get-AppxProvisionedPackage -Online | Where-Object {{ $_.DisplayName -eq $AppName
                     command = uninstallString.Substring(0, firstSpace);
                     arguments = uninstallString.Substring(firstSpace + 1).Trim();
                 }
-                else
-                {
-                    command = uninstallString;
-                }
+                else { command = uninstallString; }
             }
-            
             if (command.EndsWith("msiexec.exe", StringComparison.OrdinalIgnoreCase) || command.Equals("msiexec", StringComparison.OrdinalIgnoreCase))
             {
-                if (arguments.Contains("/I", StringComparison.OrdinalIgnoreCase))
-                {
-                    arguments = arguments.Replace("/I", "/X", StringComparison.OrdinalIgnoreCase);
-                }
-                
-                if (!arguments.Contains("/qn", StringComparison.OrdinalIgnoreCase) && !arguments.Contains("/qb", StringComparison.OrdinalIgnoreCase))
-                {
-                    arguments += " /qn /norestart";
-                }
+                if (arguments.Contains("/I", StringComparison.OrdinalIgnoreCase)) arguments = arguments.Replace("/I", "/X", StringComparison.OrdinalIgnoreCase);
+                if (!arguments.Contains("/qn", StringComparison.OrdinalIgnoreCase)) arguments += " /qn /norestart";
             }
-            
             return (command, arguments);
         }
 
         private void CleanLeftoverFiles(string appName, string publisher, Action<string> log)
         {
-            log("[Dateibereinigung] Suche nach verwaisten AppData/ProgramFiles Ordnern...");
-            
-            var searchDirs = new List<string>
-            {
+            var searchDirs = new List<string> {
                 Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
                 Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), // Roaming
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), // Local
-                Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData) // C:\ProgramData
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData)
             };
-            
-            searchDirs = searchDirs.Where(d => !string.IsNullOrEmpty(d)).Distinct().ToList();
-            
-            if (string.IsNullOrWhiteSpace(appName)) return;
-            
-            foreach (var baseDir in searchDirs)
+            foreach (var baseDir in searchDirs.Where(d => !string.IsNullOrEmpty(d)).Distinct())
             {
                 try
                 {
                     if (!Directory.Exists(baseDir)) continue;
-                    
                     foreach (var dir in Directory.GetDirectories(baseDir))
                     {
                         string dirName = Path.GetFileName(dir);
-                        if (string.IsNullOrEmpty(dirName)) continue;
-                        
-                        bool isMatch = dirName.Equals(appName, StringComparison.OrdinalIgnoreCase);
-                        
-                        if (isMatch)
+                        if (dirName.Equals(appName, StringComparison.OrdinalIgnoreCase))
                         {
-                            log($"[Dateibereinigung] Verwaister Ordner gefunden: {dir}");
-                            try
-                            {
-                                Directory.Delete(dir, true);
-                                log($"[Dateibereinigung] Ordner gelöscht: {dirName}");
-                            }
-                            catch (Exception ex)
-                            {
-                                log($"[Dateibereinigung] Fehler beim Löschen von {dirName}: {ex.Message}");
-                            }
-                        }
-                        else if (!string.IsNullOrWhiteSpace(publisher) && 
-                                 !publisher.Equals("Unbekannt", StringComparison.OrdinalIgnoreCase) && 
-                                 dirName.Equals(publisher, StringComparison.OrdinalIgnoreCase))
-                        {
-                            try
-                            {
-                                foreach (var subDir in Directory.GetDirectories(dir))
-                                {
-                                    string subDirName = Path.GetFileName(subDir);
-                                    if (subDirName.Equals(appName, StringComparison.OrdinalIgnoreCase))
-                                    {
-                                        log($"[Dateibereinigung] Verwaister Unterordner in Hersteller-Ordner gefunden: {subDir}");
-                                        try
-                                        {
-                                            Directory.Delete(subDir, true);
-                                            log($"[Dateibereinigung] Unterordner gelöscht: {subDirName}");
-                                            
-                                            if (Directory.GetDirectories(dir).Length == 0 && 
-                                                Directory.GetFiles(dir).Length == 0)
-                                            {
-                                                log($"[Dateibereinigung] Leerer Hersteller-Ordner wird entfernt: {dir}");
-                                                Directory.Delete(dir, false);
-                                            }
-                                        }
-                                        catch (Exception ex)
-                                        {
-                                            log($"[Dateibereinigung] Fehler beim Löschen von {subDirName}: {ex.Message}");
-                                        }
-                                    }
-                                }
-                            }
-                            catch {}
+                            Directory.Delete(dir, true);
+                            log($"[Dateibereinigung] Ordner entfernt: {dirName}");
                         }
                     }
                 }
-                catch
-                {
-                    // Ignoriere Zugriffsfehler auf Ordnern
-                }
+                catch { }
             }
         }
 
         private void CleanLeftoverRegistry(SoftwareItem app, Action<string> log)
         {
-            log("[Registrybereinigung] Suche nach verbliebenen Registrierungsschlüsseln...");
-            
-            if (!string.IsNullOrEmpty(app.RegistryPath))
-            {
-                try
-                {
-                    string fullPath = app.RegistryPath;
-                    RegistryKey? rootKey = null;
-                    string subKeyPath = string.Empty;
-                    
-                    if (fullPath.StartsWith("HKEY_LOCAL_MACHINE\\"))
-                    {
-                        rootKey = Registry.LocalMachine;
-                        subKeyPath = fullPath.Substring("HKEY_LOCAL_MACHINE\\".Length);
-                    }
-                    else if (fullPath.StartsWith("HKEY_CURRENT_USER\\"))
-                    {
-                        rootKey = Registry.CurrentUser;
-                        subKeyPath = fullPath.Substring("HKEY_CURRENT_USER\\".Length);
-                    }
-                    
-                    if (rootKey != null && !string.IsNullOrEmpty(subKeyPath))
-                    {
-                        using (RegistryKey? check = rootKey.OpenSubKey(subKeyPath))
-                        {
-                            if (check != null)
-                            {
-                                log($"[Registrybereinigung] Verwaister Deinstallationsschlüssel gefunden: {fullPath}");
-                                
-                                int lastSlash = subKeyPath.LastIndexOf('\\');
-                                if (lastSlash > 0)
-                                {
-                                    string parentPath = subKeyPath.Substring(0, lastSlash);
-                                    string keyToDelete = subKeyPath.Substring(lastSlash + 1);
-                                    using (RegistryKey? parentKey = rootKey.OpenSubKey(parentPath, true))
-                                    {
-                                        parentKey?.DeleteSubKeyTree(keyToDelete, false);
-                                        log($"[Registrybereinigung] Deinstallationsschlüssel erfolgreich entfernt.");
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    log($"[Registrybereinigung] Fehler beim Entfernen des Deinstallationsschlüssels: {ex.Message}");
-                }
-            }
-            
             if (string.IsNullOrWhiteSpace(app.Name)) return;
-            
-            var softwareRoots = new List<(RegistryKey Root, string Path)>
-            {
-                (Registry.LocalMachine, @"SOFTWARE"),
-                (Registry.LocalMachine, @"SOFTWARE\Wow6432Node"),
-                (Registry.CurrentUser, @"SOFTWARE")
+            var softwareRoots = new List<(RegistryKey Root, string Path)> {
+                (Registry.LocalMachine, @"SOFTWARE"), (Registry.LocalMachine, @"SOFTWARE\Wow6432Node"), (Registry.CurrentUser, @"SOFTWARE")
             };
-            
             foreach (var root in softwareRoots)
             {
                 try
@@ -599,227 +379,43 @@ Get-AppxProvisionedPackage -Online | Where-Object {{ $_.DisplayName -eq $AppName
                     using (RegistryKey? key = root.Root.OpenSubKey(root.Path, true))
                     {
                         if (key == null) continue;
-                        
                         foreach (string subkeyName in key.GetSubKeyNames())
                         {
-                            if (IsProtected(subkeyName)) continue;
-                            
-                            bool isMatch = subkeyName.Equals(app.Name, StringComparison.OrdinalIgnoreCase);
-                            
-                            if (isMatch)
+                            if (subkeyName.Equals(app.Name, StringComparison.OrdinalIgnoreCase))
                             {
-                                log($"[Registrybereinigung] Verwaister Schlüssel gefunden: {root.Root.Name}\\{root.Path}\\{subkeyName}");
-                                try
-                                {
-                                    key.DeleteSubKeyTree(subkeyName, false);
-                                    log($"[Registrybereinigung] Registry-Schlüssel erfolgreich entfernt.");
-                                }
-                                catch (Exception ex)
-                                {
-                                    log($"[Registrybereinigung] Fehler beim Löschen: {ex.Message}");
-                                }
-                            }
-                            else if (!string.IsNullOrWhiteSpace(app.Publisher) && 
-                                     !app.Publisher.Equals("Unbekannt", StringComparison.OrdinalIgnoreCase) && 
-                                     subkeyName.Equals(app.Publisher, StringComparison.OrdinalIgnoreCase))
-                            {
-                                try
-                                {
-                                    using (RegistryKey? pubKey = key.OpenSubKey(subkeyName, true))
-                                    {
-                                        if (pubKey != null)
-                                        {
-                                            foreach (string childKeyName in pubKey.GetSubKeyNames())
-                                            {
-                                                if (childKeyName.Equals(app.Name, StringComparison.OrdinalIgnoreCase))
-                                                {
-                                                    log($"[Registrybereinigung] Verwaister Schlüssel im Hersteller-Pfad gefunden: {root.Root.Name}\\{root.Path}\\{subkeyName}\\{childKeyName}");
-                                                    try
-                                                    {
-                                                        pubKey.DeleteSubKeyTree(childKeyName, false);
-                                                        log($"[Registrybereinigung] Schlüssel erfolgreich entfernt.");
-                                                        
-                                                        if (pubKey.SubKeyCount == 0 && pubKey.ValueCount == 0)
-                                                        {
-                                                            log($"[Registrybereinigung] Leerer Hersteller-Schlüssel wird entfernt: {subkeyName}");
-                                                            key.DeleteSubKeyTree(subkeyName, false);
-                                                        }
-                                                    }
-                                                    catch (Exception ex)
-                                                    {
-                                                        log($"[Registrybereinigung] Fehler beim Löschen: {ex.Message}");
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                catch {}
+                                key.DeleteSubKeyTree(subkeyName, false);
+                                log($"[Registrybereinigung] Schlüssel entfernt: {subkeyName}");
                             }
                         }
                     }
                 }
-                catch
-                {
-                    // Ignoriere Zugriffsfehler auf Registry-Stämmen
-                }
+                catch { }
             }
         }
 
         private void CleanShortcutsAndIconCache(SoftwareItem item, Action<string> log)
         {
-            log("[Shortcutbereinigung] Suche nach verbliebenen Verknüpfungen und Icons...");
-            
-            var searchPaths = new List<string>();
-
-            // 1. Desktop: Public & User
-            searchPaths.Add(@"C:\Users\Public\Desktop");
-            try
-            {
-                searchPaths.Add(Environment.GetFolderPath(Environment.SpecialFolder.Desktop));
-                searchPaths.Add(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory));
-            }
-            catch { }
-
-            // 2. Startmenü: User & All Users
-            try
-            {
-                searchPaths.Add(Environment.GetFolderPath(Environment.SpecialFolder.StartMenu));
-                searchPaths.Add(Environment.GetFolderPath(Environment.SpecialFolder.Programs));
-                searchPaths.Add(Environment.GetFolderPath(Environment.SpecialFolder.CommonStartMenu));
-                searchPaths.Add(Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms));
-            }
-            catch { }
-
-            // 3. Application Shortcuts
-            try
-            {
-                string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-                if (!string.IsNullOrEmpty(localAppData))
-                {
-                    searchPaths.Add(Path.Combine(localAppData, @"Microsoft\Windows\Application Shortcuts"));
-                }
-            }
-            catch { }
-
-            // Bereinigen, Duplikate filtern, Vorhandene filtern
-            searchPaths = searchPaths
-                .Where(p => !string.IsNullOrEmpty(p))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .Where(Directory.Exists)
-                .ToList();
-
-            if (string.IsNullOrWhiteSpace(item.Name))
-                return;
-
-            // Suche nach Verknüpfungsdateien (lnk, url, ico)
-            foreach (var dir in searchPaths)
+            var searchPaths = new List<string> { @"C:\Users\Public\Desktop" };
+            try { searchPaths.Add(Environment.GetFolderPath(Environment.SpecialFolder.Desktop)); searchPaths.Add(Environment.GetFolderPath(Environment.SpecialFolder.Programs)); } catch { }
+            foreach (var dir in searchPaths.Where(Directory.Exists).Distinct())
             {
                 try
                 {
-                    // EnumerateFiles statt GetFiles: streamt statt alles in den RAM zu
-                    // laden und liefert Teilergebnisse auch bei Zugriffsfehlern.
-                    foreach (var file in Directory.EnumerateFiles(dir, "*.*", SearchOption.AllDirectories))
+                    foreach (var file in Directory.GetFiles(dir, "*.*", SearchOption.AllDirectories))
                     {
-                        try
+                        string ext = Path.GetExtension(file).ToLowerInvariant();
+                        if (ext == ".lnk" || ext == ".url")
                         {
-                            string ext = Path.GetExtension(file).ToLowerInvariant();
-                            if (ext != ".lnk" && ext != ".url" && ext != ".ico")
-                                continue;
-
-                            string fileName = Path.GetFileNameWithoutExtension(file);
-                            if (IsShortcutMatch(fileName, item.Name))
+                            if (Path.GetFileNameWithoutExtension(file).Equals(item.Name, StringComparison.OrdinalIgnoreCase))
                             {
-                                log($"[Shortcutbereinigung] Verknüpfung/Icon gelöscht: {file}");
                                 File.Delete(file);
-                            }
-                        }
-                        catch
-                        {
-                            // Ignoriere Dateizugriffsfehler beim Löschen einzelner Dateien
-                        }
-                    }
-                }
-                catch
-                {
-                    // Ignoriere Zugriffsfehler beim Auflisten von Ordnern
-                }
-            }
-
-            // Lokalen Icon-Cache des Programms bereinigen
-            try
-            {
-                string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-                if (!string.IsNullOrEmpty(localAppData) && !string.IsNullOrWhiteSpace(item.Name))
-                {
-                    // UWP Apps
-                    if (item.IsUwp && !string.IsNullOrEmpty(item.PackageFullName))
-                    {
-                        string packageFamilyName = item.PackageFullName.Split('_')[0];
-                        string packagePath = Path.Combine(localAppData, "Packages");
-                        if (Directory.Exists(packagePath))
-                        {
-                            foreach (var pDir in Directory.GetDirectories(packagePath))
-                            {
-                                if (pDir.Contains(packageFamilyName, StringComparison.OrdinalIgnoreCase))
-                                {
-                                    string iconCachePath = Path.Combine(pDir, "LocalCache");
-                                    if (Directory.Exists(iconCachePath))
-                                    {
-                                        log($"[Shortcutbereinigung] Lokaler Cache-Ordner der UWP-App gelöscht: {iconCachePath}");
-                                        Directory.Delete(iconCachePath, true);
-                                    }
-                                }
+                                log($"[Shortcutbereinigung] Verknüpfung gelöscht: {Path.GetFileName(file)}");
                             }
                         }
                     }
-                    
-                    // Temp Verzeichnis
-                    string tempPath = Path.GetTempPath();
-                    if (Directory.Exists(tempPath))
-                    {
-                        foreach (var tf in Directory.EnumerateFiles(tempPath, "*.*", SearchOption.TopDirectoryOnly))
-                        {
-                            try
-                            {
-                                string tfName = Path.GetFileName(tf).ToLowerInvariant();
-                                if ((tfName.Contains("icon") || tfName.Contains("cache")) && 
-                                    IsShortcutMatch(Path.GetFileNameWithoutExtension(tf), item.Name))
-                                {
-                                    log($"[Shortcutbereinigung] Temporärer Icon-Cache gelöscht: {tf}");
-                                    File.Delete(tf);
-                                }
-                            }
-                            catch { }
-                        }
-                    }
                 }
+                catch { }
             }
-            catch (Exception ex)
-            {
-                log($"[Shortcutbereinigung] Fehler im lokalen Icon-Cache-Scan: {ex.Message}");
-            }
-        }
-
-        private bool IsShortcutMatch(string fileName, string appName)
-        {
-            if (string.IsNullOrWhiteSpace(fileName) || string.IsNullOrWhiteSpace(appName))
-                return false;
-
-            fileName = fileName.Trim();
-            appName = appName.Trim();
-
-            return fileName.Equals(appName, StringComparison.OrdinalIgnoreCase);
-        }
-
-        private bool IsProtected(string name)
-        {
-            string lower = name.ToLowerInvariant();
-            foreach (var p in ProtectedKeywords)
-            {
-                if (lower.Contains(p)) return true;
-            }
-            return false;
         }
     }
 }

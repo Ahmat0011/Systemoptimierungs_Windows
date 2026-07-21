@@ -8,86 +8,117 @@ namespace SystemOptimierer.Services
 {
     public class CleanupService : ICleanupService
     {
-        // Nativer Papierkorb-Aufruf: schneller und stabiler als einen
-        // PowerShell-Prozess für Clear-RecycleBin zu starten.
+        // ===== Nativer Papierkorb-Aufruf (leert den Papierkorb in [3/8]) =====
         [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
         private static extern int SHEmptyRecycleBin(IntPtr hwnd, string? pszRootPath, uint dwFlags);
 
         private const uint SHERB_NOCONFIRMATION = 0x00000001;
-        private const uint SHERB_NOPROGRESSUI   = 0x00000002;
-        private const uint SHERB_NOSOUND        = 0x00000004;
+        private const uint SHERB_NOPROGRESSUI = 0x00000002;
+        private const uint SHERB_NOSOUND = 0x00000004;
+
+        // ===== Konfiguration =====
+        // Muster: ALLE Ordner, die mit "tw-" anfangen UND mit ".tmp" enden.
+        // Der Mittelteil (GUID) ist egal -> trifft jede Variante automatisch.
+        private const string TwTempPattern = "tw-*.tmp";
+
+        // true  = wie cleanmgr "Windows Update-Bereinigung": räumt ALLE ersetzten
+        //         Komponenten auf (die ~570 MB). Alte Updates danach nicht mehr
+        //         deinstallierbar (irreversibel) -> genau wie cleanmgr.
+        // false = sanfter: nur sicher entbehrliche Komponenten.
+        private const bool ResetComponentStoreBase = true;
+
+        // DISM /StartComponentCleanup /ResetBase kann lange dauern -> eigener Timeout.
+        private static readonly TimeSpan ComponentCleanupTimeout = TimeSpan.FromMinutes(45);
+
+        // HARTES Zeitlimit für die tw-Ordner-Bereinigung: verhindert jeden Hänger.
+        private static readonly TimeSpan TwCleanupTimeout = TimeSpan.FromSeconds(60);
+
+        // Per-step timeout für alle anderen Teilschritte.
+        private static readonly TimeSpan DefaultStepTimeout = TimeSpan.FromSeconds(90);
 
         private readonly ICommandExecutionService _cmd;
         private readonly IPowerShellService _ps;
 
-        // Per-step timeout – prevents a single stuck sub-command from blocking the whole cleanup.
-        private static readonly TimeSpan DefaultStepTimeout = TimeSpan.FromSeconds(90);
-
         public CleanupService(ICommandExecutionService commandService, IPowerShellService powerShellService)
         {
             _cmd = commandService;
-            _ps  = powerShellService;
+            _ps = powerShellService;
         }
 
         public async Task CleanupSystemAsync(Action<string> log, CancellationToken ct)
         {
             log("--- STARTE MASTER-BEREINIGUNG (SICHER & GRÜNDLICH) ---");
 
-            // [1/6] Temp files
-            // Output is redirected to nul so that per-file deletion messages do not flood
-            // the UI dispatcher and cause the window to appear frozen.
-            log("[1/6] Lösche temporäre Dateien (kann einen Moment dauern)...");
-            await RunWithStepTimeoutAsync(
-                innerCt => _cmd.RunCommandAsync("cmd", @"/c del /q /f /s ""%temp%\*"" > nul 2>&1",           log, log, innerCt),
-                ct, DefaultStepTimeout, log);
-            await RunWithStepTimeoutAsync(
-                innerCt => _cmd.RunCommandAsync("cmd", @"/c del /q /f /s C:\Windows\Temp\* > nul 2>&1",      log, log, innerCt),
-                ct, DefaultStepTimeout, log);
-            if (Directory.Exists(@"D:\Temp")) // nicht auf jedem System vorhanden
-            {
-                await RunWithStepTimeoutAsync(
-                    innerCt => _cmd.RunCommandAsync("cmd", @"/c del /q /f /s D:\Temp\* > nul 2>&1",          log, log, innerCt),
-                    ct, TimeSpan.FromSeconds(30), log);
-            }
-            log("[1/6] \u2713 Temporäre Dateien bereinigt.");
-
+            // ------------------------------------------------------------------
+            // [1/8] tw-*.tmp Ordner HART löschen (mit Timeout -> KEIN Hänger mehr)
+            // Kein Papierkorb mehr: die Papierkorb-API (SHFileOperation) hängt an
+            // diesem SYSTEM-geschützten Pfad an einem unsichtbaren Dialog.
+            // ------------------------------------------------------------------
+            log("[1/8] Lösche verwaiste tw-*.tmp Ordner im systemprofile-Pfad...");
+            string systemProfileLocal = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.Windows),
+                @"System32\config\systemprofile\AppData\Local");
+            await DeleteTwTempFoldersWithTimeoutAsync(systemProfileLocal, log, ct, TwCleanupTimeout);
             if (ct.IsCancellationRequested) return;
 
-            // [2/6] Recycle bin \u2013 nativ per Shell-API statt PowerShell-Prozess
-            log("[2/6] Leere den Papierkorb auf ALLEN Laufwerken...");
+            // ------------------------------------------------------------------
+            // [2/8] Temp-Dateien
+            // ------------------------------------------------------------------
+            log("[2/8] Lösche temporäre Dateien (kann einen Moment dauern)...");
+            await RunWithStepTimeoutAsync(
+                innerCt => _cmd.RunCommandAsync("cmd", @"/c del /q /f /s ""%temp%\*"" > nul 2>&1", log, log, innerCt),
+                ct, DefaultStepTimeout, log);
+            await RunWithStepTimeoutAsync(
+                innerCt => _cmd.RunCommandAsync("cmd", @"/c del /q /f /s C:\Windows\Temp\* > nul 2>&1", log, log, innerCt),
+                ct, DefaultStepTimeout, log);
+            if (Directory.Exists(@"D:\Temp"))
+            {
+                await RunWithStepTimeoutAsync(
+                    innerCt => _cmd.RunCommandAsync("cmd", @"/c del /q /f /s D:\Temp\* > nul 2>&1", log, log, innerCt),
+                    ct, TimeSpan.FromSeconds(30), log);
+            }
+            log("[2/8] ✓ Temporäre Dateien bereinigt.");
+            if (ct.IsCancellationRequested) return;
+
+            // ------------------------------------------------------------------
+            // [3/8] Papierkorb leeren
+            // ------------------------------------------------------------------
+            log("[3/8] Leere den Papierkorb auf ALLEN Laufwerken...");
             await Task.Run(() =>
             {
-                // R\u00fcckgabewert bewusst ignoriert: S_OK oder "bereits leer" (E_UNEXPECTED u.\u00e4.)
                 _ = SHEmptyRecycleBin(IntPtr.Zero, null,
                     SHERB_NOCONFIRMATION | SHERB_NOPROGRESSUI | SHERB_NOSOUND);
             }, ct);
-            log("[2/6] \u2713 Papierkorb geleert.");
-
+            log("[3/8] ✓ Papierkorb geleert.");
             if (ct.IsCancellationRequested) return;
 
-            // [3/6] DirectX shader cache & thumbnails
-            log("[3/6] Lösche DirectX-Shadercache & Thumbnails...");
+            // ------------------------------------------------------------------
+            // [4/8] DirectX-Shadercache & Thumbnails
+            // ------------------------------------------------------------------
+            log("[4/8] Lösche DirectX-Shadercache & Thumbnails...");
             await RunWithStepTimeoutAsync(
                 innerCt => _cmd.RunCommandAsync("cmd", @"/c del /q /f /s ""%LocalAppData%\Microsoft\Windows\Explorer\thumbcache_*.db"" > nul 2>&1", log, log, innerCt),
                 ct, DefaultStepTimeout, log);
             await RunWithStepTimeoutAsync(
-                innerCt => _cmd.RunCommandAsync("cmd", @"/c del /q /f /s ""%LocalAppData%\NVIDIA\DXCache\*"" > nul 2>&1",                           log, log, innerCt),
+                innerCt => _cmd.RunCommandAsync("cmd", @"/c del /q /f /s ""%LocalAppData%\NVIDIA\DXCache\*"" > nul 2>&1", log, log, innerCt),
                 ct, DefaultStepTimeout, log);
-            log("[3/6] \u2713 DirectX-Shadercache & Thumbnails bereinigt.");
-
+            log("[4/8] ✓ DirectX-Shadercache & Thumbnails bereinigt.");
             if (ct.IsCancellationRequested) return;
 
-            // [4/6] Prefetch files
-            log("[4/6] Lösche Prefetch-Dateien...");
+            // ------------------------------------------------------------------
+            // [5/8] Prefetch
+            // ------------------------------------------------------------------
+            log("[5/8] Lösche Prefetch-Dateien...");
             await RunWithStepTimeoutAsync(
-                innerCt => _cmd.RunCommandAsync("cmd", @"/c del /q /f /s C:\Windows\Prefetch\* > nul 2>&1",  log, log, innerCt),
+                innerCt => _cmd.RunCommandAsync("cmd", @"/c del /q /f /s C:\Windows\Prefetch\* > nul 2>&1", log, log, innerCt),
                 ct, DefaultStepTimeout, log);
-            log("[4/6] \u2713 Prefetch-Dateien bereinigt.");
-
+            log("[5/8] ✓ Prefetch-Dateien bereinigt.");
             if (ct.IsCancellationRequested) return;
 
-            // [5/6] Windows Update Cache
-            log("[5/6] Windows Update Cache bereinigen...");
+            // ------------------------------------------------------------------
+            // [6/8] Windows Update Download-Cache
+            // ------------------------------------------------------------------
+            log("[6/8] Windows Update Download-Cache bereinigen...");
             await RunWithStepTimeoutAsync(
                 innerCt => _cmd.RunCommandAsync("net", "stop wuauserv /y", log, log, innerCt),
                 ct, TimeSpan.FromSeconds(30), log);
@@ -100,29 +131,145 @@ namespace SystemOptimierer.Services
             }
             finally
             {
-                // Always restart the Windows Update service – even if the operation was cancelled –
-                // so the system is never left with a stopped wuauserv.
                 await _cmd.RunCommandAsync("net", "start wuauserv", log, log, CancellationToken.None);
             }
-            log("[5/6] \u2713 Windows Update Cache bereinigt.");
-
+            log("[6/8] ✓ Windows Update Download-Cache bereinigt.");
             if (ct.IsCancellationRequested) return;
 
-            // [6/6] DNS cache
-            log("[6/6] Leere DNS-Cache...");
+            // ------------------------------------------------------------------
+            // [7/8] Windows Update-Bereinigung (Component Store / WinSxS) = die ~570 MB
+            // ------------------------------------------------------------------
+            string dismArgs = "/Online /Cleanup-Image /StartComponentCleanup" + (ResetComponentStoreBase ? " /ResetBase" : "");
+            log("[7/8] Windows Update-Bereinigung (Component Store) – DAS KANN MEHRERE MINUTEN DAUERN...");
+            await RunWithStepTimeoutAsync(
+                innerCt => _cmd.RunCommandAsync("DISM", dismArgs, log, log, innerCt),
+                ct, ComponentCleanupTimeout, log);
+            log("[7/8] ✓ Windows Update-Bereinigung abgeschlossen.");
+            if (ct.IsCancellationRequested) return;
+
+            // ------------------------------------------------------------------
+            // [8/8] DNS-Cache
+            // ------------------------------------------------------------------
+            log("[8/8] Leere DNS-Cache...");
             await RunWithStepTimeoutAsync(
                 innerCt => _cmd.RunCommandAsync("ipconfig", "/flushdns", log, log, innerCt),
                 ct, TimeSpan.FromSeconds(15), log);
-            log("[6/6] \u2713 DNS-Cache geleert.");
+            log("[8/8] ✓ DNS-Cache geleert.");
 
             log("--- MASTER-BEREINIGUNG ERFOLGREICH ABGESCHLOSSEN ---");
         }
 
+        // ======================================================================
+        // tw-Ordner-Bereinigung MIT hartem Timeout (Hänger-Schutz)
+        // ======================================================================
         /// <summary>
-        /// Runs <paramref name="operation"/> with a per-step timeout layered on top of
-        /// the caller's <paramref name="ct"/>.  If only the step timeout fires the warning
-        /// is logged and execution continues with the next step.  If the caller's token is
-        /// cancelled the <see cref="OperationCanceledException"/> propagates normally.
+        /// Führt die tw-Bereinigung in einem eigenen Task aus und legt ein hartes
+        /// Zeitlimit darüber. Wird das Limit erreicht, läuft der Rest im Hintergrund
+        /// weiter (fire-and-forget) und die Bereinigung macht SOFORT mit dem nächsten
+        /// Schritt weiter -> die App kann hier nie wieder hängen bleiben.
+        /// </summary>
+        private static async Task DeleteTwTempFoldersWithTimeoutAsync(
+            string twDir, Action<string> log, CancellationToken ct, TimeSpan timeout)
+        {
+            // CancellationToken.None am work-Task: der User-Abbruch soll den
+            // Lösch-Thread nicht mitten in einer Datei-Operation killen.
+            var work = Task.Run(() => DeleteTwTempFolders(twDir, log), CancellationToken.None);
+            var delay = Task.Delay(timeout, CancellationToken.None);
+
+            var finished = await Task.WhenAny(work, delay);
+
+            if (finished == delay)
+            {
+                log($"[WARNUNG] tw-Bereinigung hat das Zeitlimit ({timeout.TotalSeconds:F0}s) erreicht. " +
+                    "Rest läuft im Hintergrund weiter, Bereinigung wird fortgesetzt.");
+                // work läuft bewusst weiter (löscht nur Müll) – kein await.
+            }
+            else
+            {
+                // work ist fertig -> evtl. Exception abfangen und loggen.
+                try { await work; }
+                catch (Exception ex) { log($"[WARNUNG] tw-Bereinigung: {ex.Message}"); }
+            }
+        }
+
+        /// <summary>
+        /// Löscht ALLE Ordner, die auf tw-*.tmp passen, HART (kein Papierkorb).
+        /// Pro Ordner try/catch + rd-Fallback, damit ein einzelner Fehlschlag
+        /// die Schleife nicht stoppt.
+        /// </summary>
+        private static void DeleteTwTempFolders(string twDir, Action<string> log)
+        {
+            if (!Directory.Exists(twDir))
+            {
+                log("[1/8] ✓ Zielverzeichnis nicht vorhanden, nichts zu tun.");
+                return;
+            }
+
+            string[] folders;
+            try
+            {
+                folders = Directory.GetDirectories(twDir, TwTempPattern);
+            }
+            catch (Exception ex)
+            {
+                log($"[WARNUNG] tw-Ordner konnten nicht aufgelistet werden: {ex.Message}");
+                return;
+            }
+
+            if (folders.Length == 0)
+            {
+                log("[1/8] ✓ Keine verwaisten tw-*.tmp Ordner gefunden.");
+                return;
+            }
+
+            int deleted = 0, failed = 0;
+            foreach (var folder in folders)
+            {
+                // 1) Versuch: managed, rekursiv hart löschen
+                try
+                {
+                    Directory.Delete(folder, true);
+                    if (!Directory.Exists(folder)) { deleted++; continue; }
+                }
+                catch
+                {
+                    // fällt durch zum Fallback
+                }
+
+                // 2) Fallback: rd /s /q (robuster gegen schreibgeschützte/gesperrte Inhalte)
+                try
+                {
+                    var psi = new System.Diagnostics.ProcessStartInfo(
+                        "cmd.exe", $"/c rd /s /q \"{folder}\"")
+                    {
+                        CreateNoWindow = true,
+                        UseShellExecute = false,
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true
+                    };
+                    using var p = System.Diagnostics.Process.Start(psi);
+                    if (p != null && p.WaitForExit(8000))
+                    {
+                        if (!Directory.Exists(folder)) deleted++; else failed++;
+                    }
+                    else
+                    {
+                        if (p != null) { try { p.Kill(true); } catch { } }
+                        failed++;
+                    }
+                }
+                catch
+                {
+                    failed++;
+                }
+            }
+
+            log($"[1/8] ✓ tw-Ordner verarbeitet: {deleted} gelöscht, {failed} fehlgeschlagen (von {folders.Length}).");
+        }
+
+        /// <summary>
+        /// Teilschritt mit eigenem Timeout. Nur Schritt-Timeout -> Warnung + weiter.
+        /// User-Abbruch (ct) -> OperationCanceledException propagiert normal.
         /// </summary>
         private static async Task RunWithStepTimeoutAsync(
             Func<CancellationToken, Task> operation,
@@ -138,7 +285,6 @@ namespace SystemOptimierer.Services
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
             {
-                // Only the per-step timeout fired; log and continue with the next step.
                 log($"[WARNUNG] Schritt hat das Zeitlimit ({timeout.TotalSeconds:F0}s) überschritten und wurde übersprungen.");
             }
         }

@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.Linq;
 using System.Net.NetworkInformation;
 using System.Runtime.CompilerServices;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -27,7 +28,6 @@ namespace SystemOptimierer.ViewModels
         private readonly IPerformanceService _performanceService;
         private CancellationTokenSource? _cts;
 
-        // ICollectionView für performantes Filtern & Sortieren im DataGrid ohne UI-Freeze
         public ICollectionView SoftwareView { get; }
         public ICollectionView UwpView { get; }
 
@@ -48,44 +48,74 @@ namespace SystemOptimierer.ViewModels
             _storageService = storageService;
             _performanceService = performanceService;
 
-            // Instanziierung der hochperformanten CollectionViews
             SoftwareView = CollectionViewSource.GetDefaultView(_installedSoftware);
             SoftwareView.Filter = FilterSoftwarePredicate;
-
             UwpView = CollectionViewSource.GetDefaultView(_installedUwpApps);
             UwpView.Filter = FilterUwpAppsPredicate;
 
+            // ============================================================
+            // FIX #3: AsyncRelayCommand statt RelayCommand(async ...)
+            // → Kein "async void" mehr, Exceptions werden sauber gefangen
+            // ============================================================
+
             // Update Center
-            CheckUpdatesCommand = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("Updates suchen", ct => CheckUpdatesWrapperAsync(ct)), _ => !IsBusy);
-            InstallUpdatesCommand = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("Updates installieren", ct => InstallUpdatesWrapperAsync(ct)), _ => !IsBusy);
-            CheckDriversCommand = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("Treiber suchen", ct => CheckDriversWrapperAsync(ct)), _ => !IsBusy);
-            InstallDriversCommand = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("Treiber installieren", ct => InstallDriversWrapperAsync(ct)), _ => !IsBusy);
+            CheckUpdatesCommand = new AsyncRelayCommand(
+                _ => ExecuteWithBusyStateAsync("Updates suchen", ct => CheckUpdatesWrapperAsync(ct)),
+                _ => !IsBusy, OnCommandException);
+            InstallUpdatesCommand = new AsyncRelayCommand(
+                _ => ExecuteWithBusyStateAsync("Updates installieren", ct => InstallUpdatesWrapperAsync(ct)),
+                _ => !IsBusy, OnCommandException);
+            CheckDriversCommand = new AsyncRelayCommand(
+                _ => ExecuteWithBusyStateAsync("Treiber suchen", ct => CheckDriversWrapperAsync(ct)),
+                _ => !IsBusy, OnCommandException);
+            InstallDriversCommand = new AsyncRelayCommand(
+                _ => ExecuteWithBusyStateAsync("Treiber installieren", ct => InstallDriversWrapperAsync(ct)),
+                _ => !IsBusy, OnCommandException);
 
             // System-Reparatur
-            RepairSystemCommand = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("System reparieren", ct => _repairService.RepairSystemAsync(Log, ct)), _ => !IsBusy);
+            RepairSystemCommand = new AsyncRelayCommand(
+                _ => ExecuteWithBusyStateAsync("System reparieren", ct => _repairService.RepairSystemAsync(Log, ct)),
+                _ => !IsBusy, OnCommandException);
 
             // Bereinigung & Optimierung
-            CleanupSystemCommand = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("System bereinigen", async ct => {
-                await _cleanupService.CleanupSystemAsync(Log, ct);
-                await RefreshStorageInfoAsync();
-            }, false), _ => !IsBusy);
-            OptimizeNetworkCommand = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("Netzwerk optimieren", ct => _cleanupService.OptimizeNetworkAsync(Log, ct), false), _ => !IsBusy);
+            CleanupSystemCommand = new AsyncRelayCommand(
+                _ => ExecuteWithBusyStateAsync("System bereinigen", async ct =>
+                {
+                    await _cleanupService.CleanupSystemAsync(Log, ct);
+                    await RefreshStorageInfoAsync();
+                }, false),
+                _ => !IsBusy, OnCommandException);
+            OptimizeNetworkCommand = new AsyncRelayCommand(
+                _ => ExecuteWithBusyStateAsync("Netzwerk optimieren", ct => _cleanupService.OptimizeNetworkAsync(Log, ct), false),
+                _ => !IsBusy, OnCommandException);
 
             // Uninstaller
-            LoadAppsCommand = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("Software & Apps laden", ct => LoadAppsAsync(ct), false), _ => !IsBusy);
-            UninstallCommand = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("Deinstallation", ct => UninstallAppAsync(ct), false), _ => !IsBusy && (SelectedSoftware != null || SelectedUwpApp != null));
+            LoadAppsCommand = new AsyncRelayCommand(
+                _ => ExecuteWithBusyStateAsync("Software & Apps laden", ct => LoadAppsAsync(ct), false),
+                _ => !IsBusy, OnCommandException);
+            UninstallCommand = new AsyncRelayCommand(
+                _ => ExecuteWithBusyStateAsync("Deinstallation", ct => UninstallAppAsync(ct), false),
+                _ => !IsBusy && (SelectedSoftware != null || SelectedUwpApp != null), OnCommandException);
 
             // System-Leistung
-            BoostRamCommand = new RelayCommand(async _ => await ExecuteWithBusyStateAsync("RAM optimieren", ct => _performanceService.BoostRamAsync(Log, ct), false), _ => !IsBusy);
-            ToggleStartupCommand = new RelayCommand(async param => await ExecuteWithBusyStateAsync("Autostart ändern", async ct => {
-                if (param is StartupItem item)
+            BoostRamCommand = new AsyncRelayCommand(
+                _ => ExecuteWithBusyStateAsync("RAM optimieren", ct => _performanceService.BoostRamAsync(Log, ct), false),
+                _ => !IsBusy, OnCommandException);
+            ToggleStartupCommand = new AsyncRelayCommand(
+                async param =>
                 {
-                    await _performanceService.ToggleStartupItemAsync(item);
-                    await LoadStartupItemsAsync(ct);
-                }
-            }, false), param => !IsBusy && param is StartupItem);
+                    if (param is StartupItem item)
+                    {
+                        await ExecuteWithBusyStateAsync("Autostart ändern", async ct =>
+                        {
+                            await _performanceService.ToggleStartupItemAsync(item);
+                            await LoadStartupItemsAsync(ct);
+                        }, false);
+                    }
+                },
+                param => !IsBusy && param is StartupItem, OnCommandException);
 
-            // Global
+            // Cancel bleibt synchron → RelayCommand ist hier korrekt
             CancelCommand = new RelayCommand(_ => CancelOperation(), _ => IsBusy);
 
             Log("System Optimierer gestartet. Bereit für Befehle...\n");
@@ -94,11 +124,21 @@ namespace SystemOptimierer.ViewModels
             {
                 await RefreshStorageInfoAsync();
                 await Task.Delay(300);
-                await ExecuteWithBusyStateAsync("System-Komponenten laden", async ct => {
+                await ExecuteWithBusyStateAsync("System-Komponenten laden", async ct =>
+                {
                     await LoadAppsAsync(ct);
                     await LoadStartupItemsAsync(ct);
                 }, false);
             });
+        }
+
+        // ============================================================
+        // FIX #3 (zugehörig): Zentraler Exception-Handler für Commands
+        // ============================================================
+        private void OnCommandException(Exception ex)
+        {
+            Log($"\n[FEHLER] Unbehandelter Fehler in einem Befehl: {ex.Message}");
+            StatusMessage = "Fehler aufgetreten";
         }
 
         #region Properties
@@ -133,7 +173,11 @@ namespace SystemOptimierer.ViewModels
         public string DriveDSpace { get => _driveDSpace; set { if (_driveDSpace != value) { _driveDSpace = value; OnPropertyChanged(); } } }
 
         private bool _isBusy;
-        public bool IsBusy { get => _isBusy; set { if (_isBusy != value) { _isBusy = value; OnPropertyChanged(); OnPropertyChanged(nameof(IsNotBusy)); CommandManager.InvalidateRequerySuggested(); } } }
+        public bool IsBusy
+        {
+            get => _isBusy;
+            set { if (_isBusy != value) { _isBusy = value; OnPropertyChanged(); OnPropertyChanged(nameof(IsNotBusy)); CommandManager.InvalidateRequerySuggested(); } }
+        }
         public bool IsNotBusy => !_isBusy;
 
         private string _logText = string.Empty;
@@ -142,11 +186,25 @@ namespace SystemOptimierer.ViewModels
         private string _statusMessage = "Bereit";
         public string StatusMessage { get => _statusMessage; set { if (_statusMessage != value) { _statusMessage = value; OnPropertyChanged(); } } }
 
+        // ============================================================
+        // FIX #1: LiveScanSpeed – fehlte komplett, XAML-Binding schlug fehl
+        // ============================================================
+        private string _liveScanSpeed = "BEREIT";
+        public string LiveScanSpeed { get => _liveScanSpeed; set { if (_liveScanSpeed != value) { _liveScanSpeed = value; OnPropertyChanged(); } } }
+
         private ObservableCollection<SoftwareItem> _installedSoftware = new();
-        public ObservableCollection<SoftwareItem> InstalledSoftware { get => _installedSoftware; set { _installedSoftware = value; OnPropertyChanged(); SoftwareView.Refresh(); } }
+        public ObservableCollection<SoftwareItem> InstalledSoftware
+        {
+            get => _installedSoftware;
+            set { _installedSoftware = value; OnPropertyChanged(); SoftwareView.Refresh(); }
+        }
 
         private ObservableCollection<SoftwareItem> _installedUwpApps = new();
-        public ObservableCollection<SoftwareItem> InstalledUwpApps { get => _installedUwpApps; set { _installedUwpApps = value; OnPropertyChanged(); UwpView.Refresh(); } }
+        public ObservableCollection<SoftwareItem> InstalledUwpApps
+        {
+            get => _installedUwpApps;
+            set { _installedUwpApps = value; OnPropertyChanged(); UwpView.Refresh(); }
+        }
 
         private string _searchText = string.Empty;
         public string SearchText
@@ -159,23 +217,57 @@ namespace SystemOptimierer.ViewModels
         public bool CleanLeftovers { get => _cleanLeftovers; set { if (_cleanLeftovers != value) { _cleanLeftovers = value; OnPropertyChanged(); } } }
 
         private SoftwareItem? _selectedSoftware;
-        public SoftwareItem? SelectedSoftware { get => _selectedSoftware; set { if (_selectedSoftware != value) { _selectedSoftware = value; OnPropertyChanged(); if (value != null) { _selectedUwpApp = null; OnPropertyChanged(nameof(SelectedUwpApp)); } CommandManager.InvalidateRequerySuggested(); } } }
+        public SoftwareItem? SelectedSoftware
+        {
+            get => _selectedSoftware;
+            set
+            {
+                if (_selectedSoftware != value)
+                {
+                    _selectedSoftware = value; OnPropertyChanged();
+                    if (value != null) { _selectedUwpApp = null; OnPropertyChanged(nameof(SelectedUwpApp)); }
+                    CommandManager.InvalidateRequerySuggested();
+                }
+            }
+        }
 
         private SoftwareItem? _selectedUwpApp;
-        public SoftwareItem? SelectedUwpApp { get => _selectedUwpApp; set { if (_selectedUwpApp != value) { _selectedUwpApp = value; OnPropertyChanged(); if (value != null) { _selectedSoftware = null; OnPropertyChanged(nameof(SelectedSoftware)); } CommandManager.InvalidateRequerySuggested(); } } }
+        public SoftwareItem? SelectedUwpApp
+        {
+            get => _selectedUwpApp;
+            set
+            {
+                if (_selectedUwpApp != value)
+                {
+                    _selectedUwpApp = value; OnPropertyChanged();
+                    if (value != null) { _selectedSoftware = null; OnPropertyChanged(nameof(SelectedSoftware)); }
+                    CommandManager.InvalidateRequerySuggested();
+                }
+            }
+        }
 
         private ObservableCollection<StartupItem> _startupItems = new();
-        public ObservableCollection<StartupItem> StartupItems { get => _startupItems; set { _startupItems = value; OnPropertyChanged(); OnPropertyChanged(nameof(FilteredStartupItems)); } }
+        public ObservableCollection<StartupItem> StartupItems
+        {
+            get => _startupItems;
+            set { _startupItems = value; OnPropertyChanged(); OnPropertyChanged(nameof(FilteredStartupItems)); }
+        }
 
         private string _startupSearchText = string.Empty;
-        public string StartupSearchText { get => _startupSearchText; set { if (_startupSearchText != value) { _startupSearchText = value; OnPropertyChanged(); OnPropertyChanged(nameof(FilteredStartupItems)); } } }
+        public string StartupSearchText
+        {
+            get => _startupSearchText;
+            set { if (_startupSearchText != value) { _startupSearchText = value; OnPropertyChanged(); OnPropertyChanged(nameof(FilteredStartupItems)); } }
+        }
 
         public IEnumerable<StartupItem> FilteredStartupItems
         {
             get
             {
                 if (string.IsNullOrWhiteSpace(StartupSearchText)) return _startupItems;
-                return _startupItems.Where(item => item.Name.Contains(StartupSearchText, StringComparison.OrdinalIgnoreCase) || item.Path.Contains(StartupSearchText, StringComparison.OrdinalIgnoreCase));
+                return _startupItems.Where(item =>
+                    item.Name.Contains(StartupSearchText, StringComparison.OrdinalIgnoreCase) ||
+                    item.Path.Contains(StartupSearchText, StringComparison.OrdinalIgnoreCase));
             }
         }
 
@@ -215,24 +307,12 @@ namespace SystemOptimierer.ViewModels
             SoftwareView.SortDescriptions.Clear();
             switch (SoftwareSortMode)
             {
-                case "Neueste zuerst":
-                    SoftwareView.SortDescriptions.Add(new SortDescription("InstallDateTime", ListSortDirection.Descending));
-                    break;
-                case "Älteste zuerst":
-                    SoftwareView.SortDescriptions.Add(new SortDescription("InstallDateTime", ListSortDirection.Ascending));
-                    break;
-                case "Name (A-Z)":
-                    SoftwareView.SortDescriptions.Add(new SortDescription("Name", ListSortDirection.Ascending));
-                    break;
-                case "Name (Z-A)":
-                    SoftwareView.SortDescriptions.Add(new SortDescription("Name", ListSortDirection.Descending));
-                    break;
-                case "Größe (Große zuerst)":
-                    SoftwareView.SortDescriptions.Add(new SortDescription("EstimatedSizeKb", ListSortDirection.Descending));
-                    break;
-                default:
-                    SoftwareView.SortDescriptions.Add(new SortDescription("InstallDateTime", ListSortDirection.Descending));
-                    break;
+                case "Neueste zuerst": SoftwareView.SortDescriptions.Add(new SortDescription("InstallDateTime", ListSortDirection.Descending)); break;
+                case "Älteste zuerst": SoftwareView.SortDescriptions.Add(new SortDescription("InstallDateTime", ListSortDirection.Ascending)); break;
+                case "Name (A-Z)": SoftwareView.SortDescriptions.Add(new SortDescription("Name", ListSortDirection.Ascending)); break;
+                case "Name (Z-A)": SoftwareView.SortDescriptions.Add(new SortDescription("Name", ListSortDirection.Descending)); break;
+                case "Größe (Große zuerst)": SoftwareView.SortDescriptions.Add(new SortDescription("EstimatedSizeKb", ListSortDirection.Descending)); break;
+                default: SoftwareView.SortDescriptions.Add(new SortDescription("InstallDateTime", ListSortDirection.Descending)); break;
             }
         }
 
@@ -241,26 +321,15 @@ namespace SystemOptimierer.ViewModels
             UwpView.SortDescriptions.Clear();
             switch (UwpSortMode)
             {
-                case "Neueste zuerst":
-                    UwpView.SortDescriptions.Add(new SortDescription("InstallDateTime", ListSortDirection.Descending));
-                    break;
-                case "Älteste zuerst":
-                    UwpView.SortDescriptions.Add(new SortDescription("InstallDateTime", ListSortDirection.Ascending));
-                    break;
-                case "Name (A-Z)":
-                    UwpView.SortDescriptions.Add(new SortDescription("Name", ListSortDirection.Ascending));
-                    break;
-                case "Name (Z-A)":
-                    UwpView.SortDescriptions.Add(new SortDescription("Name", ListSortDirection.Descending));
-                    break;
-                default:
-                    UwpView.SortDescriptions.Add(new SortDescription("InstallDateTime", ListSortDirection.Descending));
-                    break;
+                case "Neueste zuerst": UwpView.SortDescriptions.Add(new SortDescription("InstallDateTime", ListSortDirection.Descending)); break;
+                case "Älteste zuerst": UwpView.SortDescriptions.Add(new SortDescription("InstallDateTime", ListSortDirection.Ascending)); break;
+                case "Name (A-Z)": UwpView.SortDescriptions.Add(new SortDescription("Name", ListSortDirection.Ascending)); break;
+                case "Name (Z-A)": UwpView.SortDescriptions.Add(new SortDescription("Name", ListSortDirection.Descending)); break;
+                default: UwpView.SortDescriptions.Add(new SortDescription("InstallDateTime", ListSortDirection.Descending)); break;
             }
         }
 
         private const int MaxLogLength = 60_000;
-
         private void Log(string message)
         {
             Application.Current.Dispatcher.BeginInvoke(new Action(() =>
@@ -270,7 +339,9 @@ namespace SystemOptimierer.ViewModels
                 {
                     int startSearch = Math.Max(0, combined.Length - (MaxLogLength / 2));
                     int cutAt = combined.IndexOf('\n', startSearch);
-                    combined = cutAt > 0 ? "[... ältere Einträge wurden gekürzt ...]\n" + combined.Substring(cutAt + 1) : message + "\n";
+                    combined = cutAt > 0
+                        ? "[... ältere Einträge wurden gekürzt ...]\n" + combined.Substring(cutAt + 1)
+                        : message + "\n";
                 }
                 LogText = combined;
             }));
@@ -278,26 +349,46 @@ namespace SystemOptimierer.ViewModels
 
         private async Task<bool> IsInternetAvailableAsync()
         {
-            try { using (var ping = new Ping()) { var reply = await ping.SendPingAsync("1.1.1.1", 2000); return reply.Status == IPStatus.Success; } }
+            try { using var ping = new Ping(); var reply = await ping.SendPingAsync("1.1.1.1", 2000); return reply.Status == IPStatus.Success; }
             catch { return false; }
         }
 
         private async Task ExecuteWithBusyStateAsync(string operationName, Func<CancellationToken, Task> action, bool requiresInternet = true)
         {
-            if (IsBusy) return; // Atomarer Reentrancy-Schutz gegen Doppel-Klicks!
-
+            if (IsBusy) return;
             if (requiresInternet && !await IsInternetAvailableAsync())
             {
                 Log($"FEHLER: Keine Internetverbindung gefunden! [{operationName}] abgebrochen.\n");
                 return;
             }
+
             IsBusy = true;
             StatusMessage = $"{operationName} läuft...";
+            LiveScanSpeed = "AKTIV";
             _cts = new CancellationTokenSource();
-            try { await Task.Run(async () => await action(_cts.Token)); StatusMessage = $"{operationName} erfolgreich abgeschlossen."; }
-            catch (TaskCanceledException) { Log($"\n--- VORGANG ABGEBROCHEN: {operationName} ---"); StatusMessage = "Abgebrochen"; }
-            catch (Exception ex) { Log($"\nKritischer Fehler bei {operationName}: {ex.Message}"); StatusMessage = "Fehler aufgetreten"; }
-            finally { _cts?.Dispose(); _cts = null; IsBusy = false; }
+
+            try
+            {
+                await Task.Run(async () => await action(_cts.Token));
+                StatusMessage = $"{operationName} erfolgreich abgeschlossen.";
+            }
+            catch (TaskCanceledException)
+            {
+                Log($"\n--- VORGANG ABGEBROCHEN: {operationName} ---");
+                StatusMessage = "Abgebrochen";
+            }
+            catch (Exception ex)
+            {
+                Log($"\nKritischer Fehler bei {operationName}: {ex.Message}");
+                StatusMessage = "Fehler aufgetreten";
+            }
+            finally
+            {
+                _cts?.Dispose();
+                _cts = null;
+                IsBusy = false;
+                LiveScanSpeed = "BEREIT";
+            }
         }
 
         private async Task LoadAppsAsync(CancellationToken ct)
@@ -330,6 +421,7 @@ namespace SystemOptimierer.ViewModels
                 ApplySoftwareSorting();
                 ApplyUwpSorting();
             });
+
             Log($"Erfolgreich {classicApps.Count} System-Programme und {uwpApps.Count} Windows Apps geladen.");
         }
 
@@ -337,7 +429,8 @@ namespace SystemOptimierer.ViewModels
         {
             var items = await Task.Run(() => _performanceService.GetStartupItems(), ct);
             if (ct.IsCancellationRequested) return;
-            await Application.Current.Dispatcher.InvokeAsync(() => {
+            await Application.Current.Dispatcher.InvokeAsync(() =>
+            {
                 _startupItems.Clear();
                 foreach (var item in items) _startupItems.Add(item);
                 OnPropertyChanged(nameof(FilteredStartupItems));
@@ -371,13 +464,15 @@ namespace SystemOptimierer.ViewModels
         {
             if (string.IsNullOrWhiteSpace(line)) return;
             if (line.Contains("---") || line.Contains("Name") || line.Contains("ID ") || line.Contains("Version")) return;
-            var parts = System.Text.RegularExpressions.Regex.Split(line.Trim(), @"\s{2,}");
+
+            var parts = Regex.Split(line.Trim(), @"\s{2,}");
             if (parts.Length >= 4)
             {
                 string name = parts[0]; string id = parts[1]; string currentVer = parts[2]; string availableVer = parts[3];
                 if (!string.IsNullOrEmpty(id) && availableVer.Any(char.IsDigit))
                 {
-                    Application.Current.Dispatcher.BeginInvoke(new Action(() => {
+                    Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+                    {
                         if (!UpdatesCollection.Any(x => x.UpdateId == id))
                         {
                             UpdatesCollection.Add(new UpdateItem { Name = name, UpdateId = id, CurrentVersion = currentVer, AvailableVersion = availableVer, Type = "Software-Update", Status = "Ausstehend" });
@@ -408,16 +503,39 @@ namespace SystemOptimierer.ViewModels
             }));
         }
 
+        // ============================================================
+        // FIX #2: Treiber-Anzahl aus dem DriverService-Log parsen
+        // ============================================================
+        private void ParseDriverCount(string line)
+        {
+            if (string.IsNullOrWhiteSpace(line)) return;
+            // DriverService loggt: "GESAMT: 5 Treiber-Updates verfügbar (Pflicht: 2, Optional: 3)"
+            if (line.Contains("GESAMT:", StringComparison.OrdinalIgnoreCase))
+            {
+                var match = Regex.Match(line, @"GESAMT:\s*(\d+)");
+                if (match.Success && int.TryParse(match.Groups[1].Value, out int count))
+                {
+                    Application.Current.Dispatcher.BeginInvoke(new Action(() => { DriversFoundCount = count; }));
+                }
+            }
+        }
+
         private async Task CheckUpdatesWrapperAsync(CancellationToken ct)
         {
-            await Application.Current.Dispatcher.InvokeAsync(() => {
+            await Application.Current.Dispatcher.InvokeAsync(() =>
+            {
                 var toRemove = UpdatesCollection.Where(x => x.Type == "Software-Update").ToList();
                 foreach (var item in toRemove) UpdatesCollection.Remove(item);
                 UpdatesFoundCount = 0;
                 CurrentUpdateActivity = "Lade Quellen...";
             });
+
             await _updateService.CheckUpdatesAsync(msg => { Log(msg); ParseWingetUpgradeLine(msg); }, ct);
-            await Application.Current.Dispatcher.InvokeAsync(() => { CurrentUpdateActivity = $"Suche beendet. {UpdatesFoundCount} Update(s) gefunden."; });
+
+            await Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                CurrentUpdateActivity = $"Suche beendet. {UpdatesFoundCount} Update(s) gefunden.";
+            });
         }
 
         private async Task InstallUpdatesWrapperAsync(CancellationToken ct)
@@ -425,7 +543,6 @@ namespace SystemOptimierer.ViewModels
             await Application.Current.Dispatcher.InvokeAsync(() => { CurrentUpdateActivity = "Starte Installation..."; });
             await _updateService.InstallUpdatesAsync(msg => { Log(msg); ParseWingetInstallLine(msg); }, ct);
 
-            // Nach Durchlauf alle unvollständigen winget-Updates als Erfolgreich markieren um Hänger zu verhindern
             await Application.Current.Dispatcher.InvokeAsync(() =>
             {
                 CurrentUpdateActivity = "Installation beendet.";
@@ -436,11 +553,9 @@ namespace SystemOptimierer.ViewModels
                 UpdatesFoundCount = UpdatesCollection.Count(x => x.Type == "Software-Update" && x.Status != "Erfolgreich");
             });
 
-            // WICHTIG: 1.8 Sekunden warten geschieht AUßERHALB des Dispatchers (kein Blockieren des UI-Threads!)
             await Task.Delay(1800, ct);
             if (ct.IsCancellationRequested) return;
 
-            // Auto-Clear: Erfolgreiche Einträge aus der Collection werfen
             await Application.Current.Dispatcher.InvokeAsync(() =>
             {
                 var done = UpdatesCollection.Where(x => x.Type == "Software-Update" && x.Status == "Erfolgreich").ToList();
@@ -449,9 +564,13 @@ namespace SystemOptimierer.ViewModels
             });
         }
 
+        // ============================================================
+        // FIX #2 (zugehörig): DriversFoundCount wird jetzt geparst
+        // ============================================================
         private async Task CheckDriversWrapperAsync(CancellationToken ct)
         {
-            await _driverService.CheckDriversAsync(msg => Log(msg), ct);
+            await Application.Current.Dispatcher.InvokeAsync(() => { DriversFoundCount = 0; });
+            await _driverService.CheckDriversAsync(msg => { Log(msg); ParseDriverCount(msg); }, ct);
         }
 
         private async Task InstallDriversWrapperAsync(CancellationToken ct)
@@ -459,7 +578,15 @@ namespace SystemOptimierer.ViewModels
             await _driverService.InstallDriversAsync(msg => Log(msg), ct);
         }
 
-        private void CancelOperation() { if (_cts != null && !_cts.IsCancellationRequested) { Log("\nAbbruch eingeleitet..."); _cts.Cancel(); } }
+        private void CancelOperation()
+        {
+            if (_cts != null && !_cts.IsCancellationRequested)
+            {
+                Log("\nAbbruch eingeleitet...");
+                _cts.Cancel();
+            }
+        }
+
         #endregion
 
         #region Commands
@@ -478,6 +605,7 @@ namespace SystemOptimierer.ViewModels
         #endregion
 
         public event PropertyChangedEventHandler? PropertyChanged;
-        protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null) { PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName)); }
+        protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+            => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 }

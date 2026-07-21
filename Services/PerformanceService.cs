@@ -23,9 +23,13 @@ namespace SystemOptimierer.Services
         private static extern bool CloseHandle(IntPtr hObject);
 
         private const uint PROCESS_SET_QUOTA = 0x0100;
-        // LIMITED_INFORMATION statt QUERY_INFORMATION: funktioniert auch bei
-        // geschützten Prozessen → mehr Prozesse können optimiert werden.
         private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+
+        // ============================================================
+        // FIX #5: Systemprozesse ausschließen (PID 0 = Idle, PID 4 = System)
+        // Diese können nicht optimiert werden und verursachen nur Fehler.
+        // ============================================================
+        private static readonly HashSet<int> ExcludedPids = new() { 0, 4 };
 
         public async Task BoostRamAsync(Action<string> log, CancellationToken ct)
         {
@@ -36,27 +40,33 @@ namespace SystemOptimierer.Services
             long finalMem = 0;
             int successCount = 0;
             int failCount = 0;
+            int skippedCount = 0;
 
             var processes = Process.GetProcesses();
             foreach (var proc in processes)
             {
                 if (ct.IsCancellationRequested) break;
+
                 try
                 {
+                    // System Idle (PID 0) und System (PID 4) auslassen
+                    if (ExcludedPids.Contains(proc.Id))
+                    {
+                        skippedCount++;
+                        continue;
+                    }
+
                     initialMem += proc.WorkingSet64;
 
-                    IntPtr hProcess = OpenProcess(PROCESS_SET_QUOTA | PROCESS_QUERY_LIMITED_INFORMATION, false, proc.Id);
+                    IntPtr hProcess = OpenProcess(
+                        PROCESS_SET_QUOTA | PROCESS_QUERY_LIMITED_INFORMATION, false, proc.Id);
 
                     if (hProcess != IntPtr.Zero)
                     {
                         if (EmptyWorkingSet(hProcess))
-                        {
                             successCount++;
-                        }
                         else
-                        {
                             failCount++;
-                        }
                         CloseHandle(hProcess);
                     }
                     else
@@ -81,9 +91,10 @@ namespace SystemOptimierer.Services
             {
                 try
                 {
-                    finalMem += proc.WorkingSet64;
+                    if (!ExcludedPids.Contains(proc.Id))
+                        finalMem += proc.WorkingSet64;
                 }
-                catch {}
+                catch { }
                 finally
                 {
                     proc.Dispose();
@@ -94,23 +105,18 @@ namespace SystemOptimierer.Services
             double freedMb = freedBytes / (1024.0 * 1024.0);
             if (freedMb < 0) freedMb = 0;
 
-            log($"[Ergebnis] RAM-Optimierung abgeschlossen.");
-            log($"[Status] {successCount} Prozesse erfolgreich optimiert, {failCount} Prozesse übersprungen (geschützt/inaktiv).");
+            log("[Ergebnis] RAM-Optimierung abgeschlossen.");
+            log($"[Status] {successCount} Prozesse optimiert, {failCount} übersprungen (geschützt), {skippedCount} Systemprozesse ausgelassen.");
             log($"[Speicher] Ca. {freedMb:F1} MB RAM freigegeben.\n");
         }
 
         public List<StartupItem> GetStartupItems()
         {
             var items = new List<StartupItem>();
-
-            // HKCU
             ReadRunKey(Registry.CurrentUser, @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", true, "HKCU", items);
             ReadRunKey(Registry.CurrentUser, @"SOFTWARE\SystemOptimierer\StartupBackup", false, "HKCU", items);
-
-            // HKLM
             ReadRunKey(Registry.LocalMachine, @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", true, "HKLM", items);
             ReadRunKey(Registry.LocalMachine, @"SOFTWARE\SystemOptimierer\StartupBackup", false, "HKLM", items);
-
             return items.OrderBy(i => i.Name).ToList();
         }
 
@@ -119,36 +125,35 @@ namespace SystemOptimierer.Services
             await Task.Run(() =>
             {
                 RegistryKey rootKey = item.RegistryKeyPath == "HKLM" ? Registry.LocalMachine : Registry.CurrentUser;
-                string sourcePath = item.IsEnabled 
-                    ? @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run" 
+                string sourcePath = item.IsEnabled
+                    ? @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
                     : @"SOFTWARE\SystemOptimierer\StartupBackup";
-                string targetPath = item.IsEnabled 
-                    ? @"SOFTWARE\SystemOptimierer\StartupBackup" 
+                string targetPath = item.IsEnabled
+                    ? @"SOFTWARE\SystemOptimierer\StartupBackup"
                     : @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
 
                 try
                 {
-                    using (var srcKey = rootKey.OpenSubKey(sourcePath, true))
-                    using (var dstKey = rootKey.CreateSubKey(targetPath, true))
+                    using var srcKey = rootKey.OpenSubKey(sourcePath, true);
+                    using var dstKey = rootKey.CreateSubKey(targetPath, true);
+
+                    if (srcKey != null && dstKey != null)
                     {
-                        if (srcKey != null && dstKey != null)
+                        object? value = srcKey.GetValue(item.Name);
+                        if (value != null)
                         {
-                            object? value = srcKey.GetValue(item.Name);
-                            if (value != null)
-                            {
-                                dstKey.SetValue(item.Name, value, srcKey.GetValueKind(item.Name));
-                                srcKey.DeleteValue(item.Name, false);
-                                item.IsEnabled = !item.IsEnabled;
-                            }
-                            else
-                            {
-                                throw new InvalidOperationException("Der Registry-Wert konnte nicht gelesen werden.");
-                            }
+                            dstKey.SetValue(item.Name, value, srcKey.GetValueKind(item.Name));
+                            srcKey.DeleteValue(item.Name, false);
+                            item.IsEnabled = !item.IsEnabled;
                         }
                         else
                         {
-                            throw new UnauthorizedAccessException("Registry-Zugriff verweigert (Schreibrechte erforderlich).");
+                            throw new InvalidOperationException("Der Registry-Wert konnte nicht gelesen werden.");
                         }
+                    }
+                    else
+                    {
+                        throw new UnauthorizedAccessException("Registry-Zugriff verweigert (Schreibrechte erforderlich).");
                     }
                 }
                 catch (Exception ex)
@@ -162,26 +167,22 @@ namespace SystemOptimierer.Services
         {
             try
             {
-                using (var key = rootKey.OpenSubKey(subKeyPath))
+                using var key = rootKey.OpenSubKey(subKeyPath);
+                if (key == null) return;
+
+                foreach (string valueName in key.GetValueNames())
                 {
-                    if (key == null) return;
-                    foreach (string valueName in key.GetValueNames())
+                    string value = key.GetValue(valueName)?.ToString() ?? string.Empty;
+                    items.Add(new StartupItem
                     {
-                        string value = key.GetValue(valueName)?.ToString() ?? string.Empty;
-                        items.Add(new StartupItem
-                        {
-                            Name = valueName,
-                            Path = value,
-                            RegistryKeyPath = keyPathLabel,
-                            IsEnabled = isEnabled
-                        });
-                    }
+                        Name = valueName,
+                        Path = value,
+                        RegistryKeyPath = keyPathLabel,
+                        IsEnabled = isEnabled
+                    });
                 }
             }
-            catch
-            {
-                // Ignoriere fehlende Rechte / nicht vorhandene Registry Pfade
-            }
+            catch { }
         }
     }
 }

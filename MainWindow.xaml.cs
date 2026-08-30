@@ -1,5 +1,7 @@
 using System;
+using System.Linq;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using SystemOptimierer.Services;
 using SystemOptimierer.ViewModels;
@@ -11,19 +13,27 @@ namespace SystemOptimierer
         public MainWindow()
         {
             InitializeComponent();
+            this.Closing += Window_Closing;
 
             // Dependency Injection (Manuelles Wiring für dieses Projekt)
-            var commandService    = new CommandExecutionService();
+            var commandService = new CommandExecutionService();
             var powerShellService = new PowerShellService(commandService);
-
-            var updateService      = new UpdateService(commandService);
-            var driverService      = new DriverService(powerShellService);
-            var repairService      = new RepairService(commandService);
-            var cleanupService     = new CleanupService(commandService, powerShellService);
+            var updateService = new UpdateService(commandService);
+            var driverService = new DriverService(powerShellService);
+            var repairService = new RepairService(commandService);
+            var cleanupService = new CleanupService(commandService, powerShellService);
             var uninstallerService = new UninstallerService(commandService, powerShellService);
-            var storageService     = new StorageService();
+            var storageService = new StorageService();
             var performanceService = new PerformanceService();
             DataContext = new MainViewModel(updateService, driverService, repairService, cleanupService, uninstallerService, storageService, performanceService);
+        }
+
+        private void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
+        {
+            if (DataContext is MainViewModel vm)
+            {
+                vm.RequestShutdown();
+            }
         }
 
         // Title Bar Drag Logic
@@ -61,10 +71,56 @@ namespace SystemOptimierer
             this.Close();
         }
 
-        // Auto-Scroll Feature für die Konsolen-TextBox
-        private void TxtLog_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
+        private void TxtLog_TextChanged(object sender, TextChangedEventArgs e)
         {
             TxtLog.ScrollToEnd();
+
+            string log = TxtLog.Text ?? string.Empty;
+            int totalLines = log.Split('\n').Length;
+            int successCount = CountOccurrences(log, "[ERFOLG]") + CountOccurrences(log, "✓");
+            int warningCount = CountOccurrences(log, "[WARNUNG]") + CountOccurrences(log, "⚠");
+            int errorCount = CountOccurrences(log, "[FEHLER]") + CountOccurrences(log, "FEHLER:") + CountOccurrences(log, "✕");
+
+            LogEntryCount.Text = totalLines.ToString();
+            LogSuccessCount.Text = successCount.ToString();
+            LogWarningCount.Text = warningCount.ToString();
+            LogErrorCount.Text = errorCount.ToString();
+        }
+
+        private static int CountOccurrences(string source, string pattern)
+        {
+            if (string.IsNullOrEmpty(source) || string.IsNullOrEmpty(pattern)) return 0;
+            int count = 0, index = 0;
+            while ((index = source.IndexOf(pattern, index, StringComparison.OrdinalIgnoreCase)) != -1)
+            {
+                count++;
+                index += pattern.Length;
+            }
+            return count;
+        }
+
+        private void SelectAllSoftware_Click(object sender, RoutedEventArgs e)
+        {
+            if (DataContext is not MainViewModel vm) return;
+            if (sender is not CheckBox cb) return;
+
+            bool shouldSelect = cb.IsChecked == true;
+            foreach (var app in vm.InstalledSoftware.Where(a => vm.SoftwareView.Contains(a)))
+            {
+                app.IsSelected = shouldSelect;
+            }
+        }
+
+        private void SelectAllUwp_Click(object sender, RoutedEventArgs e)
+        {
+            if (DataContext is not MainViewModel vm) return;
+            if (sender is not CheckBox cb) return;
+
+            bool shouldSelect = cb.IsChecked == true;
+            foreach (var app in vm.InstalledUwpApps.Where(a => vm.UwpView.Contains(a)))
+            {
+                app.IsSelected = shouldSelect;
+            }
         }
     }
 }

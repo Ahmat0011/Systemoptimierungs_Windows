@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -19,12 +20,15 @@ namespace SystemOptimierer.Services
             string tempScriptPath = string.Empty;
             try
             {
-                // Skript temporär speichern
                 tempScriptPath = Path.Combine(Path.GetTempPath(), $"script_{Guid.NewGuid()}.ps1");
-                await File.WriteAllTextAsync(tempScriptPath, script, cancellationToken);
 
-                // Skript sicher über den Command Service ausführen
-                string arguments = $"-NoProfile -ExecutionPolicy Bypass -File \"{tempScriptPath}\"";
+                // OPT 1: UTF-8 MIT BOM – Windows PowerShell 5.1 liest ohne BOM als ANSI (Umlaute-Kaputt)
+                // OPT 2: ProgressPreference voranstellen – macht PS-Skripte deutlich schneller
+                string optimizedScript = "$ProgressPreference = 'SilentlyContinue'\n" + script;
+                await File.WriteAllTextAsync(tempScriptPath, optimizedScript, new UTF8Encoding(true), cancellationToken);
+
+                // OPT 3: -NonInteractive verhindert, dass PS auf User-Eingabe wartet (unsichtbarer Hänger)
+                string arguments = $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{tempScriptPath}\"";
                 await _commandService.RunCommandAsync("powershell.exe", arguments, onOutput, onError, cancellationToken);
             }
             catch (Exception ex)
@@ -33,17 +37,9 @@ namespace SystemOptimierer.Services
             }
             finally
             {
-                // Aufräumen: Temporäres Skript löschen, falls es noch existiert
                 if (!string.IsNullOrEmpty(tempScriptPath) && File.Exists(tempScriptPath))
                 {
-                    try
-                    {
-                        File.Delete(tempScriptPath);
-                    }
-                    catch
-                    {
-                        // Ignore deletion errors in finally block
-                    }
+                    try { File.Delete(tempScriptPath); } catch { }
                 }
             }
         }

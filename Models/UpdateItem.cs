@@ -19,6 +19,20 @@ namespace SystemOptimierer.Models
             }
         }
 
+        private string _detail = string.Empty;
+        public string Detail
+        {
+            get => _detail;
+            set
+            {
+                if (_detail != value)
+                {
+                    _detail = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
         public string Name { get; set; } = string.Empty;
         public string Type { get; set; } = string.Empty; // "Software-Update" or "Treiber-Update"
         public string CurrentVersion { get; set; } = string.Empty;

@@ -8,6 +8,22 @@
     <UseWPF>true</UseWPF>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>icon.ico</ApplicationIcon>
+
+    <!-- Metadaten & Publisher-Informationen -->
+    <AssemblyName>SystemOptimierer</AssemblyName>
+    <RootNamespace>SystemOptimierer</RootNamespace>
+    <Version>2.5.0</Version>
+    <AssemblyVersion>2.5.0.0</AssemblyVersion>
+    <FileVersion>2.5.0.0</FileVersion>
+    <Company>SystemOptimizer PRO</Company>
+    <Product>SystemOptimizer PRO</Product>
+    <Description>Windows System-Optimierungs- und Wartungstool</Description>
+    <Copyright>Copyright © 2026</Copyright>
+
+    <!-- Single-File Publishing Support gegen Smart App Control DLL-Blockaden -->
+    <PublishSingleFile Condition="'$(Configuration)' == 'Release'">true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
   </PropertyGroup>
 
   <ItemGroup>

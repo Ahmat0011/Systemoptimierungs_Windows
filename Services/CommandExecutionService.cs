@@ -9,7 +9,7 @@ namespace SystemOptimierer.Services
     {
         private const int ProcessTerminationTimeoutMs = 5000;
 
-        public async Task RunCommandAsync(
+        public async Task<int> RunCommandAsync(
             string command,
             string arguments,
             Action<string> onOutput,
@@ -31,12 +31,10 @@ namespace SystemOptimierer.Services
                 using (var process = new Process())
                 {
                     process.StartInfo = processInfo;
-
                     process.OutputDataReceived += (sender, args) =>
                     {
                         if (args.Data != null) onOutput?.Invoke(args.Data);
                     };
-                    
                     process.ErrorDataReceived += (sender, args) =>
                     {
                         if (args.Data != null) onError?.Invoke(args.Data);
@@ -49,30 +47,21 @@ namespace SystemOptimierer.Services
                     try
                     {
                         await process.WaitForExitAsync(cancellationToken);
-
-                        // Wait synchronously so that all remaining OutputDataReceived / ErrorDataReceived
-                        // events are fully processed before we leave the using block.
-                        // A bounded timeout avoids blocking indefinitely when the async reader
-                        // drain takes unexpectedly long.
                         process.WaitForExit(ProcessTerminationTimeoutMs);
+                        return process.ExitCode;
                     }
                     catch (OperationCanceledException)
                     {
                         if (!process.HasExited)
                         {
                             try { process.Kill(entireProcessTree: true); } catch { }
-                            // Give the OS a moment to terminate the process and drain the streams
-                            // before CancelOutputRead is called in the finally block.
                             process.WaitForExit(ProcessTerminationTimeoutMs);
                         }
                         onError?.Invoke("Vorgang wurde abgebrochen.");
+                        return -1;
                     }
                     finally
                     {
-                        // Stop the async read pumps.  Must be called before Dispose.
-                        // Do NOT call StandardOutput.Close() / StandardError.Close() here –
-                        // touching those streams after BeginOutputReadLine() can throw
-                        // InvalidOperationException and is redundant (Dispose handles it).
                         try { process.CancelOutputRead(); } catch { }
                         try { process.CancelErrorRead(); } catch { }
                     }
@@ -81,6 +70,7 @@ namespace SystemOptimierer.Services
             catch (Exception ex)
             {
                 onError?.Invoke($"Kritischer Fehler beim Ausführen: {ex.Message}");
+                return -1;
             }
         }
     }

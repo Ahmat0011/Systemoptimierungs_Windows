@@ -830,7 +830,7 @@
                                      Tag="🧹" Content="Bereinigung &amp; Optimierung"
                                      x:Name="NavCleanup"/>
                         <RadioButton Style="{StaticResource NavItemStyle}"
-                                     Tag="📦" Content="Software &amp; Apps"
+                                     Tag="📦" Content="Deinstallieren"
                                      x:Name="NavSoftwareManager"/>
                         <RadioButton Style="{StaticResource NavItemStyle}"
                                      Tag="🚀" Content="System-Leistung"
@@ -913,40 +913,67 @@
                                 <DataGridTextColumn Header="Typ" Binding="{Binding Type}" Width="160" />
                                 <DataGridTextColumn Header="Aktuell" Binding="{Binding CurrentVersion}" Width="100" />
                                 <DataGridTextColumn Header="Verfügbar" Binding="{Binding AvailableVersion}" Width="100" />
-                                <DataGridTemplateColumn Header="Status" Width="130">
+                                <DataGridTemplateColumn Header="Status" Width="180">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
-                                            <TextBlock VerticalAlignment="Center" HorizontalAlignment="Center" FontWeight="SemiBold">
-                                                <TextBlock.Style>
-                                                    <Style TargetType="TextBlock">
-                                                        <Setter Property="Text" Value="{Binding Status}"/>
-                                                        <Setter Property="Foreground" Value="#E2E2E2"/>
-                                                        <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding Status}" Value="Erfolgreich">
-                                                                <Setter Property="Foreground" Value="#4AF626"/>
-                                                            </DataTrigger>
-                                                            <DataTrigger Binding="{Binding Status}" Value="Fehlgeschlagen">
-                                                                <Setter Property="Foreground" Value="#FF3B30"/>
-                                                            </DataTrigger>
-                                                            <DataTrigger Binding="{Binding Status}" Value="Wird installiert...">
-                                                                <Setter Property="Foreground" Value="#4D9EFF"/>
-                                                            </DataTrigger>
-                                                            <DataTrigger Binding="{Binding Status}" Value="Wird heruntergeladen...">
-                                                                <Setter Property="Foreground" Value="#E5B3FF"/>
-                                                            </DataTrigger>
-                                                            <DataTrigger Binding="{Binding Status}" Value="Pflicht-Treiber">
-                                                                <Setter Property="Foreground" Value="#FFB3B3"/>
-                                                            </DataTrigger>
-                                                            <DataTrigger Binding="{Binding Status}" Value="Optionaler Treiber">
-                                                                <Setter Property="Foreground" Value="#FFCC00"/>
-                                                            </DataTrigger>
-                                                            <DataTrigger Binding="{Binding Status}" Value="Ausstehend">
-                                                                <Setter Property="Foreground" Value="#808590"/>
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </TextBlock.Style>
-                                            </TextBlock>
+                                            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="0,2">
+                                                <TextBlock HorizontalAlignment="Center" FontWeight="SemiBold" FontSize="11">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Text" Value="{Binding Status}"/>
+                                                            <Setter Property="Foreground" Value="#E2E2E2"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding Status}" Value="Erfolgreich">
+                                                                    <Setter Property="Foreground" Value="#4AF626"/>
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding Status}" Value="Fehlgeschlagen">
+                                                                    <Setter Property="Foreground" Value="#FF3B30"/>
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding Status}" Value="Wird installiert...">
+                                                                    <Setter Property="Foreground" Value="#4D9EFF"/>
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding Status}" Value="Herunterladen...">
+                                                                    <Setter Property="Foreground" Value="#E5B3FF"/>
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding Status}" Value="Wird heruntergeladen...">
+                                                                    <Setter Property="Foreground" Value="#E5B3FF"/>
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding Status}" Value="Prüfe Integrität...">
+                                                                    <Setter Property="Foreground" Value="#00FFCC"/>
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding Status}" Value="Wird vorbereitet...">
+                                                                    <Setter Property="Foreground" Value="#FFCC00"/>
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding Status}" Value="Pflicht-Treiber">
+                                                                    <Setter Property="Foreground" Value="#FFB3B3"/>
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding Status}" Value="Optionaler Treiber">
+                                                                    <Setter Property="Foreground" Value="#FFCC00"/>
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding Status}" Value="Ausstehend">
+                                                                    <Setter Property="Foreground" Value="#808590"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                                <TextBlock Text="{Binding Detail}" Foreground="#8A92A6" FontSize="10" HorizontalAlignment="Center" Margin="0,2,0,0"
+                                                           TextTrimming="CharacterEllipsis" MaxWidth="170">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding Detail}" Value="">
+                                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding Detail}" Value="{x:Null}">
+                                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                            </StackPanel>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>
@@ -1033,7 +1060,7 @@
                     </Grid.RowDefinitions>
 
                     <StackPanel Grid.Row="0" Margin="0,0,0,15">
-                        <TextBlock Text="Software &amp; Apps" Foreground="White" FontSize="22" FontWeight="Light" Margin="0,0,0,4"/>
+                        <TextBlock Text="Deinstallieren" Foreground="White" FontSize="22" FontWeight="Light" Margin="0,0,0,4"/>
                         <TextBlock Text="Systemspezifische Programme &amp; Store Apps getrennt verwalten, live filtern und tiefenreinigen" Foreground="#4D9EFF" FontSize="12"/>
                     </StackPanel>
 
@@ -1066,13 +1093,27 @@
                                               ToolTip="Sortierung ändern. Standardmäßig werden neue Apps oben angezeigt."/>
                                 </Grid>
 
-                                <DataGrid Grid.Row="1" Style="{StaticResource PremiumDataGridStyle}"
+                                <DataGrid x:Name="dgSoftware" Grid.Row="1" Style="{StaticResource PremiumDataGridStyle}"
                                           ItemsSource="{Binding SoftwareView}"
                                           SelectedItem="{Binding SelectedSoftware, Mode=TwoWay}"
                                           Margin="0,0,0,15" FocusVisualStyle="{x:Null}">
                                     <DataGrid.Columns>
+                                        <DataGridTemplateColumn Width="45">
+                                            <DataGridTemplateColumn.Header>
+                                                <CheckBox Click="SelectAllSoftware_Click"
+                                                          Style="{StaticResource PremiumCheckBoxStyle}"
+                                                          ToolTip="Alle sichtbaren Programme auswählen / abwählen"
+                                                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </DataGridTemplateColumn.Header>
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                              Style="{StaticResource PremiumCheckBoxStyle}"
+                                                              HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
                                         <DataGridTextColumn Header="Programmname" Binding="{Binding Name}" Width="*" />
-                                        <DataGridTextColumn Header="Version" Binding="{Binding DisplayVersion}" Width="140" />
                                         <DataGridTextColumn Header="Herausgeber" Binding="{Binding Publisher}" Width="200" />
                                         <DataGridTextColumn Header="Installiert am" Binding="{Binding InstallDateDisplay}" Width="145" />
                                         <DataGridTextColumn Header="Größe" Binding="{Binding EstimatedSize}" Width="110" />
@@ -1082,13 +1123,17 @@
                                 <Border Grid.Row="2" Background="#1A1C23" BorderBrush="#22252D" BorderThickness="1" CornerRadius="8" Padding="15,12">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
                                         <CheckBox Grid.Column="0" Content="Restliche Dateien und leere Ordner automatisch löschen" 
                                                   IsChecked="{Binding CleanLeftovers}"
                                                   Style="{StaticResource PremiumCheckBoxStyle}" />
-                                        <Button Grid.Column="1" Content="🗑  Deinstallieren" 
+                                        <TextBlock Grid.Column="1" Text="{Binding SelectedSoftwareStatusText}" 
+                                                   Foreground="#4D9EFF" FontSize="12" FontWeight="SemiBold" 
+                                                   VerticalAlignment="Center" Margin="20,0,0,0"/>
+                                        <Button Grid.Column="2" Content="🗑  Deinstallieren" 
                                                 Command="{Binding UninstallCommand}" 
                                                 Style="{StaticResource ModernButtonStyle}" 
                                                 Width="160" Height="36" Margin="10,0,0,0" />
@@ -1124,13 +1169,27 @@
                                               ToolTip="Sortierung ändern. Standardmäßig werden neue Apps oben angezeigt."/>
                                 </Grid>
 
-                                <DataGrid Grid.Row="1" Style="{StaticResource PremiumDataGridStyle}"
+                                <DataGrid x:Name="dgUwp" Grid.Row="1" Style="{StaticResource PremiumDataGridStyle}"
                                           ItemsSource="{Binding UwpView}"
                                           SelectedItem="{Binding SelectedUwpApp, Mode=TwoWay}"
                                           Margin="0,0,0,15" FocusVisualStyle="{x:Null}">
                                     <DataGrid.Columns>
+                                        <DataGridTemplateColumn Width="45">
+                                            <DataGridTemplateColumn.Header>
+                                                <CheckBox Click="SelectAllUwp_Click"
+                                                          Style="{StaticResource PremiumCheckBoxStyle}"
+                                                          ToolTip="Alle sichtbaren Apps auswählen / abwählen"
+                                                          HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </DataGridTemplateColumn.Header>
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                              Style="{StaticResource PremiumCheckBoxStyle}"
+                                                              HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
                                         <DataGridTextColumn Header="Programmname" Binding="{Binding Name}" Width="*" />
-                                        <DataGridTextColumn Header="Version" Binding="{Binding DisplayVersion}" Width="140" />
                                         <DataGridTextColumn Header="Herausgeber" Binding="{Binding Publisher}" Width="200" />
                                         <DataGridTextColumn Header="Installiert am" Binding="{Binding InstallDateDisplay}" Width="145" />
                                         <DataGridTextColumn Header="Größe" Binding="{Binding EstimatedSize}" Width="110" />
@@ -1140,13 +1199,17 @@
                                 <Border Grid.Row="2" Background="#1A1C23" BorderBrush="#22252D" BorderThickness="1" CornerRadius="8" Padding="15,12">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
                                         <CheckBox Grid.Column="0" Content="Restliche Dateien und leere Ordner automatisch löschen" 
                                                   IsChecked="{Binding CleanLeftovers}"
                                                   Style="{StaticResource PremiumCheckBoxStyle}" />
-                                        <Button Grid.Column="1" Content="🗑  Deinstallieren" 
+                                        <TextBlock Grid.Column="1" Text="{Binding SelectedSoftwareStatusText}" 
+                                                   Foreground="#4D9EFF" FontSize="12" FontWeight="SemiBold" 
+                                                   VerticalAlignment="Center" Margin="20,0,0,0"/>
+                                        <Button Grid.Column="2" Content="🗑  Deinstallieren" 
                                                 Command="{Binding UninstallCommand}" 
                                                 Style="{StaticResource ModernButtonStyle}" 
                                                 Width="160" Height="36" Margin="10,0,0,0" />
@@ -1316,115 +1379,142 @@
             </Grid>
 
             <Border Grid.Row="3" Grid.Column="1" Margin="30,0,30,20"
-                    Background="#050505" BorderBrush="#007ACC" BorderThickness="1.5" CornerRadius="8">
-                <Border.Effect>
-                    <DropShadowEffect Color="#007ACC" BlurRadius="8" Opacity="0.35" ShadowDepth="0"/>
-                </Border.Effect>
+        Background="#050505" BorderBrush="#007ACC" BorderThickness="1.5" CornerRadius="8">
+    <Border.Effect>
+        <DropShadowEffect Color="#007ACC" BlurRadius="8" Opacity="0.35" ShadowDepth="0"/>
+    </Border.Effect>
+    <Grid>
+        <!-- ====== CLASSIC CONSOLE (bei allen außer "Update Center") ====== -->
+        <Grid x:Name="ClassicConsoleContainer">
+            <Grid.Style>
+                <Style TargetType="Grid">
+                    <Setter Property="Visibility" Value="Visible"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsChecked, ElementName=NavUpdates}" Value="True">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Grid.Style>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <!-- Header -->
+            <Border Grid.Row="0" Background="#0C1014" CornerRadius="8,8,0,0" Padding="15,7" BorderBrush="#1C2025" BorderThickness="0,0,0,1">
                 <Grid>
-                    <Grid x:Name="ClassicConsoleContainer">
-                        <Grid.Style>
-                            <Style TargetType="Grid">
-                                <Setter Property="Visibility" Value="Visible"/>
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding IsChecked, ElementName=NavUpdates}" Value="True">
-                                        <Setter Property="Visibility" Value="Collapsed"/>
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Grid.Style>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="*"/>
-                        </Grid.RowDefinitions>
-
-                        <Border Grid.Row="0" Background="#0C1014" CornerRadius="8,8,0,0" Padding="15,7" BorderBrush="#1C2025" BorderThickness="0,0,0,1">
-                            <Grid>
-                                <TextBlock Text="▶  LIVE EXECUTION CONSOLE  //  SYSTEM.OVERRIDE"
-                                           Foreground="#2D72D9" FontSize="10" FontFamily="Consolas" FontWeight="Bold" VerticalAlignment="Center"/>
-                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                                    <TextBlock Text="GESCHWINDIGKEIT: " Foreground="#555A67" FontSize="9" FontFamily="Consolas" FontWeight="Bold"/>
-                                    <TextBlock Text="{Binding LiveScanSpeed}" Foreground="#00FFCC" FontSize="9" FontFamily="Consolas" FontWeight="Bold"/>
-                                </StackPanel>
-                            </Grid>
-                        </Border>
-
-                        <TextBox Grid.Row="1" x:Name="TxtLog"
-                                 Text="{Binding LogText, Mode=OneWay}"
-                                 IsReadOnly="True" TextWrapping="Wrap"
-                                 VerticalScrollBarVisibility="Auto"
-                                 Background="Transparent" Foreground="#4AF626"
-                                 FontFamily="Consolas" FontSize="11" FontWeight="Medium"
-                                 Margin="12,8,12,8" BorderThickness="0"
-                                 TextChanged="TxtLog_TextChanged"/>
-                    </Grid>
-
-                    <Border x:Name="ModernUpdateDashboard" Padding="25,15"
-                            UseLayoutRounding="True" SnapsToDevicePixels="True" TextOptions.TextFormattingMode="Display">
-                        <Border.Style>
-                            <Style TargetType="Border">
-                                <Setter Property="Visibility" Value="Collapsed"/>
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding IsChecked, ElementName=NavUpdates}" Value="True">
-                                        <Setter Property="Visibility" Value="Visible"/>
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Border.Style>
-                        <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="*"/>
-                                <RowDefinition Height="Auto"/>
-                            </Grid.RowDefinitions>
-
-                            <Grid Grid.Row="0" Margin="0,0,0,10">
-                                <TextBlock Text="MONITOR // SYSTEM.UPDATE.STATUS"
-                                           Foreground="#4D9EFF" FontSize="11" FontFamily="Consolas" FontWeight="Bold"/>
-                            </Grid>
-
-                            <UniformGrid Grid.Row="1" Columns="3" Rows="1" VerticalAlignment="Center" Margin="0,5">
-                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                                    <TextBlock Text="📦 SOFTWARE-UPDATES" Foreground="#808590" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center"/>
-                                    <TextBlock Text="{Binding UpdatesFoundCount}" Foreground="#4D9EFF" FontSize="26" FontFamily="Consolas" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,4,0,0"/>
-                                </StackPanel>
-
-                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                                    <TextBlock Text="🔌 SYSTEM-TREIBER" Foreground="#808590" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center"/>
-                                    <TextBlock Text="{Binding DriversFoundCount}" Foreground="#4AF626" FontSize="26" FontFamily="Consolas" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,4,0,0"/>
-                                </StackPanel>
-
-                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                                    <TextBlock Text="⚡ STATUS DER OPERATION" Foreground="#808590" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center"/>
-                                    <TextBlock Text="{Binding CurrentUpdateActivity}" Foreground="#FFFFFF" FontSize="12" FontFamily="Consolas" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,6,0,0" TextWrapping="Wrap" MaxWidth="250" TextTrimming="CharacterEllipsis"/>
-                                </StackPanel>
-                            </UniformGrid>
-
-                            <StackPanel Grid.Row="2" Margin="0,10,0,0">
-                                <Grid Margin="0,0,0,4">
-                                    <TextBlock Text="WINDOWS UPDATE &amp; WINGET SYNCHRONISATION" Foreground="#555A67" FontSize="9" FontWeight="Bold" HorizontalAlignment="Left"/>
-                                    <TextBlock Text="SUCHE / INSTALLATION LÄUFT..." Foreground="#4D9EFF" FontSize="9" FontWeight="Bold" HorizontalAlignment="Right">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Setter Property="Visibility" Value="Collapsed"/>
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsBusy}" Value="True">
-                                                        <Setter Property="Visibility" Value="Visible"/>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
-                                </Grid>
-                                <ProgressBar Height="6" IsIndeterminate="{Binding IsBusy}" Style="{StaticResource PremiumProgressBarStyle}">
-                                    <ProgressBar.Effect>
-                                        <DropShadowEffect Color="#4D9EFF" BlurRadius="6" ShadowDepth="0" Opacity="0.7"/>
-                                    </ProgressBar.Effect>
-                                </ProgressBar>
-                            </StackPanel>
-                        </Grid>
-                    </Border>
+                    <TextBlock Text="▶  LIVE EXECUTION CONSOLE  //  SYSTEM.OVERRIDE"
+                               Foreground="#2D72D9" FontSize="10" FontFamily="Consolas" FontWeight="Bold" VerticalAlignment="Center"/>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                        <TextBlock Text="STATUS: " Foreground="#555A67" FontSize="9" FontFamily="Consolas" FontWeight="Bold"/>
+                        <TextBlock Text="{Binding LiveScanSpeed}" Foreground="#00FFCC" FontSize="9" FontFamily="Consolas" FontWeight="Bold"/>
+                    </StackPanel>
                 </Grid>
             </Border>
+
+            <!-- NEU: Status-Panel mit Zählern (wie im Update-Dashboard) -->
+            <Border Grid.Row="1" Background="#0A0C10" Padding="15,10" BorderBrush="#1C2025" BorderThickness="0,0,0,1">
+                <UniformGrid Columns="4" Rows="1">
+                    <StackPanel HorizontalAlignment="Center">
+                        <TextBlock Text="📝 EINTRÄGE" Foreground="#555A67" FontSize="9" FontWeight="Bold" HorizontalAlignment="Center"/>
+                        <TextBlock x:Name="LogEntryCount" Text="0" Foreground="#4D9EFF" FontSize="18" FontFamily="Consolas" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,3,0,0"/>
+                    </StackPanel>
+                    <StackPanel HorizontalAlignment="Center">
+                        <TextBlock Text="✓ ERFOLGE" Foreground="#555A67" FontSize="9" FontWeight="Bold" HorizontalAlignment="Center"/>
+                        <TextBlock x:Name="LogSuccessCount" Text="0" Foreground="#4AF626" FontSize="18" FontFamily="Consolas" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,3,0,0"/>
+                    </StackPanel>
+                    <StackPanel HorizontalAlignment="Center">
+                        <TextBlock Text="⚠ WARNUNGEN" Foreground="#555A67" FontSize="9" FontWeight="Bold" HorizontalAlignment="Center"/>
+                        <TextBlock x:Name="LogWarningCount" Text="0" Foreground="#FFCC00" FontSize="18" FontFamily="Consolas" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,3,0,0"/>
+                    </StackPanel>
+                    <StackPanel HorizontalAlignment="Center">
+                        <TextBlock Text="✕ FEHLER" Foreground="#555A67" FontSize="9" FontWeight="Bold" HorizontalAlignment="Center"/>
+                        <TextBlock x:Name="LogErrorCount" Text="0" Foreground="#FF3B30" FontSize="18" FontFamily="Consolas" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,3,0,0"/>
+                    </StackPanel>
+                </UniformGrid>
+            </Border>
+
+            <!-- Log-Ausgabe (bleibt TextBox, aber mit farbiger Syntax-Hervorhebung via Code-Behind-Update) -->
+            <TextBox Grid.Row="2" x:Name="TxtLog"
+                     Text="{Binding LogText, Mode=OneWay}"
+                     IsReadOnly="True" TextWrapping="Wrap"
+                     VerticalScrollBarVisibility="Auto"
+                     Background="Transparent" Foreground="#4AF626"
+                     FontFamily="Consolas" FontSize="11" FontWeight="Medium"
+                     Margin="12,8,12,8" BorderThickness="0"
+                     TextChanged="TxtLog_TextChanged"/>
         </Grid>
-    </Border>
+
+        <!-- ====== UPDATE DASHBOARD (bei "Update Center") – bleibt wie gehabt ====== -->
+        <Border x:Name="ModernUpdateDashboard" Padding="25,15"
+                UseLayoutRounding="True" SnapsToDevicePixels="True" TextOptions.TextFormattingMode="Display">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsChecked, ElementName=NavUpdates}" Value="True">
+                            <Setter Property="Visibility" Value="Visible"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <Grid Grid.Row="0" Margin="0,0,0,10">
+                    <TextBlock Text="MONITOR // SYSTEM.UPDATE.STATUS"
+                               Foreground="#4D9EFF" FontSize="11" FontFamily="Consolas" FontWeight="Bold"/>
+                </Grid>
+
+                <UniformGrid Grid.Row="1" Columns="3" Rows="1" VerticalAlignment="Center" Margin="0,5">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <TextBlock Text="📦 SOFTWARE-UPDATES" Foreground="#808590" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center"/>
+                        <TextBlock Text="{Binding UpdatesFoundCount}" Foreground="#4D9EFF" FontSize="26" FontFamily="Consolas" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,4,0,0"/>
+                    </StackPanel>
+
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <TextBlock Text="🔌 SYSTEM-TREIBER" Foreground="#808590" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center"/>
+                        <TextBlock Text="{Binding DriversFoundCount}" Foreground="#4AF626" FontSize="26" FontFamily="Consolas" FontWeight="Bold" HorizontalAlignment="Center" Margin="0,4,0,0"/>
+                    </StackPanel>
+
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <TextBlock Text="⚡ STATUS DER OPERATION" Foreground="#808590" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center"/>
+                        <TextBlock Text="{Binding CurrentUpdateActivity}" Foreground="#FFFFFF" FontSize="12" FontFamily="Consolas" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,6,0,0" TextWrapping="Wrap" MaxWidth="250" TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+                </UniformGrid>
+
+                <StackPanel Grid.Row="2" Margin="0,10,0,0">
+                    <Grid Margin="0,0,0,4">
+                        <TextBlock Text="WINDOWS UPDATE &amp; WINGET SYNCHRONISATION" Foreground="#555A67" FontSize="9" FontWeight="Bold" HorizontalAlignment="Left"/>
+                        <TextBlock Text="SUCHE / INSTALLATION LÄUFT..." Foreground="#4D9EFF" FontSize="9" FontWeight="Bold" HorizontalAlignment="Right">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsBusy}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Grid>
+                    <ProgressBar Height="6" IsIndeterminate="{Binding IsBusy}" Style="{StaticResource PremiumProgressBarStyle}">
+                        <ProgressBar.Effect>
+                            <DropShadowEffect Color="#4D9EFF" BlurRadius="6" ShadowDepth="0" Opacity="0.7"/>
+                        </ProgressBar.Effect>
+                    </ProgressBar>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Border>
+</Grid>
+</Border>
 </Window>

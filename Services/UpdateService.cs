@@ -44,6 +44,12 @@ namespace SystemOptimierer.Services
             log("--- DEEP-SCAN ABGESCHLOSSEN ---");
         }
 
+        public async Task<int> InstallSingleUpdateAsync(string updateId, Action<string> log, CancellationToken ct)
+        {
+            string arguments = $"upgrade --id \"{updateId}\" --exact --accept-package-agreements --accept-source-agreements --disable-interactivity --silent";
+            return await _cmd.RunCommandAsync("winget", arguments, log, log, ct);
+        }
+
         public async Task InstallUpdatesAsync(Action<string> log, CancellationToken ct)
         {
             log("--- INSTALLIERE ALLE STABILEN UPDATES (DEEP-INSTALL) ---");

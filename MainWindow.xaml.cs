@@ -14,6 +14,7 @@ namespace SystemOptimierer
         {
             InitializeComponent();
             this.Closing += Window_Closing;
+            this.Activated += Window_Activated;
 
             // Dependency Injection (Manuelles Wiring für dieses Projekt)
             var commandService = new CommandExecutionService();
@@ -25,7 +26,16 @@ namespace SystemOptimierer
             var uninstallerService = new UninstallerService(commandService, powerShellService);
             var storageService = new StorageService();
             var performanceService = new PerformanceService();
-            DataContext = new MainViewModel(updateService, driverService, repairService, cleanupService, uninstallerService, storageService, performanceService);
+            var appsWatcher = new InstalledAppsWatcher();
+            DataContext = new MainViewModel(updateService, driverService, repairService, cleanupService, uninstallerService, storageService, performanceService, appsWatcher);
+        }
+
+        private void Window_Activated(object? sender, EventArgs e)
+        {
+            if (DataContext is MainViewModel vm)
+            {
+                vm.OnWindowActivated();
+            }
         }
 
         private void Window_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
@@ -76,7 +86,7 @@ namespace SystemOptimierer
             TxtLog.ScrollToEnd();
 
             string log = TxtLog.Text ?? string.Empty;
-            int totalLines = log.Split('\n').Length;
+            int totalLines = log.AsSpan().Count('\n') + 1;
             int successCount = CountOccurrences(log, "[ERFOLG]") + CountOccurrences(log, "✓");
             int warningCount = CountOccurrences(log, "[WARNUNG]") + CountOccurrences(log, "⚠");
             int errorCount = CountOccurrences(log, "[FEHLER]") + CountOccurrences(log, "FEHLER:") + CountOccurrences(log, "✕");
@@ -109,6 +119,7 @@ namespace SystemOptimierer
             {
                 app.IsSelected = shouldSelect;
             }
+            vm.UpdateSelectedSoftwareStatus();
         }
 
         private void SelectAllUwp_Click(object sender, RoutedEventArgs e)
@@ -121,6 +132,7 @@ namespace SystemOptimierer
             {
                 app.IsSelected = shouldSelect;
             }
+            vm.UpdateSelectedSoftwareStatus();
         }
     }
 }

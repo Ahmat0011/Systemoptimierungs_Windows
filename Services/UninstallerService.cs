@@ -30,9 +30,9 @@ namespace SystemOptimierer.Services
         public List<SoftwareItem> GetInstalledSoftware()
         {
             var apps = new List<SoftwareItem>();
-            ScanRegistryKey(Registry.LocalMachine, @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall", apps);
-            ScanRegistryKey(Registry.LocalMachine, @"SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall", apps);
-            ScanRegistryKey(Registry.CurrentUser, @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall", apps);
+            ScanRegistryKey(Registry.LocalMachine, AppRegistryPaths.Uninstall, apps);
+            ScanRegistryKey(Registry.LocalMachine, AppRegistryPaths.UninstallWow6432, apps);
+            ScanRegistryKey(Registry.CurrentUser, AppRegistryPaths.Uninstall, apps);
             return apps
                 .Where(a => !string.IsNullOrWhiteSpace(a.Name))
                 .GroupBy(a => a.Name.Trim(), StringComparer.OrdinalIgnoreCase)
@@ -120,33 +120,76 @@ Get-AppxPackage -AllUsers | Where-Object { -not $_.IsFramework -and $_.NonRemova
             return uwpApps;
         }
 
-        private string GetFreshUninstallString(string registryPath)
+        /// <summary>
+        /// Öffnet einen als "HKEY_LOCAL_MACHINE\..." bzw. "HKEY_CURRENT_USER\..." gespeicherten Registry-Pfad.
+        /// </summary>
+        private static RegistryKey? OpenRegistryPath(string registryPath)
         {
-            if (string.IsNullOrEmpty(registryPath)) return string.Empty;
-            RegistryKey? rootKey = null;
-            string subKeyPath = string.Empty;
-            if (registryPath.StartsWith("HKEY_LOCAL_MACHINE\\", StringComparison.OrdinalIgnoreCase))
-            {
-                rootKey = Registry.LocalMachine;
-                subKeyPath = registryPath.Substring("HKEY_LOCAL_MACHINE\\".Length);
-            }
-            else if (registryPath.StartsWith("HKEY_CURRENT_USER\\", StringComparison.OrdinalIgnoreCase))
-            {
-                rootKey = Registry.CurrentUser;
-                subKeyPath = registryPath.Substring("HKEY_CURRENT_USER\\".Length);
-            }
-            if (rootKey != null && !string.IsNullOrEmpty(subKeyPath))
-            {
-                using RegistryKey? key = rootKey.OpenSubKey(subKeyPath);
-                string un = key?.GetValue("UninstallString")?.ToString() ?? string.Empty;
-                if (string.IsNullOrEmpty(un))
-                    un = key?.GetValue("QuietUninstallString")?.ToString() ?? string.Empty;
-                return un;
-            }
-            return string.Empty;
+            var (root, subKeyPath) = SplitRegistryPath(registryPath);
+            if (root == null || string.IsNullOrEmpty(subKeyPath)) return null;
+            try { return root.OpenSubKey(subKeyPath); }
+            catch { return null; }
         }
 
-        public async Task UninstallSoftwareAsync(SoftwareItem item, bool cleanLeftovers, Action<string> log, CancellationToken ct)
+        private static (RegistryKey? Root, string SubKeyPath) SplitRegistryPath(string registryPath)
+        {
+            if (string.IsNullOrEmpty(registryPath)) return (null, string.Empty);
+            const string hklm = "HKEY_LOCAL_MACHINE\\";
+            const string hkcu = "HKEY_CURRENT_USER\\";
+            if (registryPath.StartsWith(hklm, StringComparison.OrdinalIgnoreCase))
+                return (Registry.LocalMachine, registryPath.Substring(hklm.Length));
+            if (registryPath.StartsWith(hkcu, StringComparison.OrdinalIgnoreCase))
+                return (Registry.CurrentUser, registryPath.Substring(hkcu.Length));
+            return (null, string.Empty);
+        }
+
+        /// <summary>
+        /// Liest den aktuellen Deinstallationsbefehl. QuietUninstallString wird bevorzugt,
+        /// weil er vom Hersteller explizit für die unbeaufsichtigte Deinstallation vorgesehen ist.
+        /// </summary>
+        private static string GetFreshUninstallString(string registryPath)
+        {
+            using RegistryKey? key = OpenRegistryPath(registryPath);
+            if (key == null) return string.Empty;
+            string quiet = key.GetValue("QuietUninstallString")?.ToString() ?? string.Empty;
+            if (!string.IsNullOrWhiteSpace(quiet)) return quiet;
+            return key.GetValue("UninstallString")?.ToString() ?? string.Empty;
+        }
+
+        /// <summary>
+        /// Prüft, ob der Uninstall-Eintrag eines Desktop-Programms noch in der Registry existiert.
+        /// </summary>
+        private bool IsStillInstalled(SoftwareItem item)
+        {
+            if (item.IsUwp) return true; // Store-Apps werden per PowerShell verifiziert
+            if (string.IsNullOrEmpty(item.RegistryPath)) return true;
+            using RegistryKey? key = OpenRegistryPath(item.RegistryPath);
+            return key != null;
+        }
+
+        public int GetStoreAppsFingerprint()
+        {
+            var hash = new HashCode();
+            AddSubKeyNamesToHash(Registry.CurrentUser, AppRegistryPaths.StorePackagesCurrentUser, ref hash);
+            AddSubKeyNamesToHash(Registry.LocalMachine, AppRegistryPaths.StorePackagesAllUsers, ref hash);
+            return hash.ToHashCode();
+        }
+
+        private static void AddSubKeyNamesToHash(RegistryKey root, string path, ref HashCode hash)
+        {
+            try
+            {
+                using RegistryKey? key = root.OpenSubKey(path);
+                if (key == null) return;
+                string[] names = key.GetSubKeyNames();
+                Array.Sort(names, StringComparer.OrdinalIgnoreCase);
+                hash.Add(names.Length);
+                foreach (string name in names) hash.Add(name, StringComparer.OrdinalIgnoreCase);
+            }
+            catch { }
+        }
+
+        public async Task<bool> UninstallSoftwareAsync(SoftwareItem item, bool cleanLeftovers, Action<string> log, CancellationToken ct)
         {
             string matchedKeyword = ProtectedKeywords
                 .FirstOrDefault(kw => item.Name.Contains(kw, StringComparison.OrdinalIgnoreCase)) ?? string.Empty;
@@ -154,58 +197,24 @@ Get-AppxPackage -AllUsers | Where-Object { -not $_.IsFramework -and $_.NonRemova
             {
                 log($"[SICHERHEIT] '{item.Name}' enthält das geschützte Schlüsselwort '{matchedKeyword}'.");
                 log($"[SICHERHEIT] Deinstallation wurde ZUM SCHUTZ DES SYSTEMS BLOCKIERT.\n");
-                return;
+                return false;
             }
 
             log($"--- DEINSTALLATION VON {item.Name.ToUpper()} GESTARTET ---");
 
-            bool uninstallSuccess = false;
+            bool removed = item.IsUwp
+                ? await UninstallStoreAppAsync(item, log, ct)
+                : await UninstallDesktopAppAsync(item, cleanLeftovers, log, ct);
 
-            if (item.IsUwp)
+            if (ct.IsCancellationRequested) return false;
+
+            if (!removed)
             {
-                log("[Aktion] Führe PowerShell-Deinstallation aus...");
-                string removeScript = $@"
-$PackageName = ""{item.PackageFullName}""
-$AppName     = ""{item.Name}""
-Remove-AppxPackage -Package $PackageName -AllUsers -ErrorAction SilentlyContinue
-Get-AppxProvisionedPackage -Online | Where-Object {{ $_.DisplayName -eq $AppName -or $_.PackageName -eq $PackageName }} | Remove-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue
-";
-                try
-                {
-                    await _ps.RunScriptAsync(removeScript, _ => { }, _ => { }, ct);
-                    uninstallSuccess = true;
-                    log("[Status] UWP-Deinstallation ausgeführt.");
-                }
-                catch (Exception ex) { log($"[FEHLER]: {ex.Message}"); }
-            }
-            else
-            {
-                string freshUninstallString = GetFreshUninstallString(item.RegistryPath);
-                if (string.IsNullOrEmpty(freshUninstallString))
-                {
-                    log("FEHLER: Deinstallations-Eintrag besitzt keine gültige Ausführungslogik.\n");
-                    return;
-                }
-
-                item.UninstallString = freshUninstallString;
-                var (command, arguments) = ParseUninstallString(item.UninstallString);
-                log($"[Aktion] Starte: {Path.GetFileName(command)} {arguments}");
-
-                try
-                {
-                    int exitCode = await _cmd.RunCommandAsync(command, arguments, log, log, ct);
-                    log($"[Status] Deinstallation beendet mit Exit-Code: {exitCode}");
-                    // 0 = Erfolg, 1641 = MSI Reboot initiated, 3010 = MSI Reboot required
-                    uninstallSuccess = (exitCode == 0 || exitCode == 1641 || exitCode == 3010);
-                }
-                catch (Exception ex) { log($"[FEHLER]: {ex.Message}"); }
+                log($"[WARNUNG] '{item.Name}' ist weiterhin installiert. Es wurden keine Dateien oder Registry-Einträge gelöscht.\n");
+                return false;
             }
 
-            if (ct.IsCancellationRequested) return;
-
-            // Warte kurz, damit das OS Registry-Änderungen flushen kann
-            await Task.Delay(1500, ct);
-
+            // Reste erst NACH bestätigter Deinstallation löschen – nie bei einem noch installierten Programm.
             if (cleanLeftovers)
             {
                 log("\n--- STARTE DATENMÜLL-BEREINIGUNG ---");
@@ -214,16 +223,138 @@ Get-AppxProvisionedPackage -Online | Where-Object {{ $_.DisplayName -eq $AppName
                 if (!item.IsUwp) { try { CleanLeftoverRegistry(item, log); } catch { } }
             }
 
-            if (!uninstallSuccess)
+            log($"[ERFOLG] '{item.Name}' wurde erfolgreich deinstalliert.\n");
+            return true;
+        }
+
+        private async Task<bool> UninstallStoreAppAsync(SoftwareItem item, Action<string> log, CancellationToken ct)
+        {
+            log("[Aktion] Führe PowerShell-Deinstallation aus...");
+            string removeScript = $@"
+$PackageName = '{EscapePowerShellLiteral(item.PackageFullName)}'
+$AppName     = '{EscapePowerShellLiteral(item.Name)}'
+try {{
+    Remove-AppxPackage -Package $PackageName -AllUsers -ErrorAction Stop
+}} catch {{
+    try {{ Remove-AppxPackage -Package $PackageName -ErrorAction Stop }}
+    catch {{ Write-Output ('[FEHLER] ' + $_.Exception.Message) }}
+}}
+Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue |
+    Where-Object {{ $_.DisplayName -eq $AppName -or $_.PackageName -eq $PackageName }} |
+    Remove-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Out-Null
+if (Get-AppxPackage -AllUsers | Where-Object {{ $_.PackageFullName -eq $PackageName }}) {{
+    Write-Output 'STATUS:STILL_INSTALLED'
+}} else {{
+    Write-Output 'STATUS:REMOVED'
+}}
+";
+            bool removed = false;
+            await _ps.RunScriptAsync(removeScript,
+                onOutput: line =>
+                {
+                    string trimmed = line.Trim();
+                    if (trimmed == "STATUS:REMOVED") removed = true;
+                    else if (trimmed.StartsWith("[FEHLER]", StringComparison.Ordinal)) log(trimmed);
+                },
+                onError: err => { if (!string.IsNullOrWhiteSpace(err)) log($"[FEHLER] {err.Trim()}"); },
+                cancellationToken: ct);
+
+            if (!ct.IsCancellationRequested)
+                log(removed ? "[Status] Windows-App wurde entfernt." : "[Status] Windows-App ist weiterhin registriert.");
+            return removed;
+        }
+
+        private async Task<bool> UninstallDesktopAppAsync(SoftwareItem item, bool cleanLeftovers, Action<string> log, CancellationToken ct)
+        {
+            if (!IsStillInstalled(item))
             {
-                log($"[WARNUNG] '{item.Name}' wurde möglicherweise nicht vollständig entfernt (Exit-Code != 0).");
-                log("[HINWEIS] Das Programm könnte beim nächsten Scan erneut erscheinen.\n");
+                log("[Hinweis] Der Deinstallations-Eintrag existiert nicht mehr – das Programm wurde bereits entfernt.");
+                return true;
             }
-            else
+
+            string uninstallString = GetFreshUninstallString(item.RegistryPath);
+            if (string.IsNullOrWhiteSpace(uninstallString)) uninstallString = item.UninstallString;
+            if (string.IsNullOrWhiteSpace(uninstallString))
+                return RemoveOrphanedEntry(item, "Der Eintrag enthält keinen Deinstallationsbefehl.", cleanLeftovers, log);
+
+            var (command, arguments) = ParseUninstallString(uninstallString);
+
+            if (Path.IsPathRooted(command) && !File.Exists(command))
+                return RemoveOrphanedEntry(item, $"Das Deinstallationsprogramm wurde nicht gefunden: {command}", cleanLeftovers, log);
+
+            log($"[Aktion] Starte: {Path.GetFileName(command)} {arguments}");
+
+            int exitCode = await _cmd.RunCommandAndWaitForProcessTreeAsync(
+                command, arguments, log, log,
+                isFinished: () => !IsStillInstalled(item),
+                ct);
+            if (ct.IsCancellationRequested) return false;
+
+            log($"[Status] Deinstaller beendet mit Exit-Code: {exitCode}");
+
+            // 1602 = vom Benutzer abgebrochen: kein Nachwarten nötig
+            if (exitCode == 1602 && IsStillInstalled(item))
             {
-                log($"[ERFOLG] '{item.Name}' wurde erfolgreich deinstalliert.\n");
+                log("[Hinweis] Die Deinstallation wurde im Deinstallationsassistenten abgebrochen.");
+                return false;
+            }
+
+            // Manche Deinstaller entfernen ihren Registry-Eintrag erst kurz nach dem Beenden.
+            bool removed = await WaitUntilRemovedAsync(item, TimeSpan.FromSeconds(10), ct);
+            if (removed || ct.IsCancellationRequested) return removed;
+
+            // 0 = Erfolg, 1641 = MSI Neustart eingeleitet, 3010 = MSI Neustart erforderlich
+            bool exitCodeSuccess = exitCode == 0 || exitCode == 1641 || exitCode == 3010;
+            if (exitCodeSuccess)
+                log("[Hinweis] Der Deinstaller meldet Erfolg, der Eintrag ist aber noch vorhanden (evtl. ist ein Neustart erforderlich).");
+            else
+                log("[Hinweis] Die Deinstallation wurde abgebrochen oder ist fehlgeschlagen.");
+            return false;
+        }
+
+        private async Task<bool> WaitUntilRemovedAsync(SoftwareItem item, TimeSpan timeout, CancellationToken ct)
+        {
+            var deadline = DateTime.UtcNow + timeout;
+            while (true)
+            {
+                if (!IsStillInstalled(item)) return true;
+                if (DateTime.UtcNow >= deadline || ct.IsCancellationRequested) return false;
+                try { await Task.Delay(500, ct); }
+                catch (OperationCanceledException) { return false; }
             }
         }
+
+        /// <summary>
+        /// Verwaister Eintrag (Programm existiert nicht mehr, nur die Registry verweist noch darauf):
+        /// Nur mit aktivierter Bereinigung wird genau DIESER Eintrag entfernt.
+        /// </summary>
+        private bool RemoveOrphanedEntry(SoftwareItem item, string reason, bool cleanLeftovers, Action<string> log)
+        {
+            log($"[Hinweis] {reason}");
+            if (!cleanLeftovers)
+            {
+                log("[Hinweis] Aktiviere \"Restliche Dateien und leere Ordner automatisch löschen\", um den verwaisten Eintrag zu entfernen.");
+                return false;
+            }
+
+            var (root, subKeyPath) = SplitRegistryPath(item.RegistryPath);
+            int lastSeparator = subKeyPath.LastIndexOf('\\');
+            if (root == null || lastSeparator <= 0) return false;
+
+            try
+            {
+                using RegistryKey? parent = root.OpenSubKey(subKeyPath.Substring(0, lastSeparator), writable: true);
+                parent?.DeleteSubKeyTree(subKeyPath.Substring(lastSeparator + 1), throwOnMissingSubKey: false);
+                log($"[Registry] Verwaister Deinstallations-Eintrag entfernt: {item.RegistryKey}");
+            }
+            catch (Exception ex)
+            {
+                log($"[FEHLER] Verwaister Eintrag konnte nicht entfernt werden: {ex.Message}");
+            }
+            return !IsStillInstalled(item);
+        }
+
+        private static string EscapePowerShellLiteral(string value) => value.Replace("'", "''");
 
         private void ScanRegistryKey(RegistryKey rootKey, string subKeyPath, List<SoftwareItem> apps)
         {
@@ -298,7 +429,7 @@ Get-AppxProvisionedPackage -Online | Where-Object {{ $_.DisplayName -eq $AppName
         }
 
         /// <summary>
-        /// FIX: Erkennt MSI, InnoSetup, NSIS und fügt passende Silent-Parameter hinzu.
+        /// Erkennt MSI, InnoSetup, NSIS und fügt passende Silent-Parameter hinzu.
         /// </summary>
         private (string Command, string Arguments) ParseUninstallString(string uninstallString)
         {
@@ -331,7 +462,6 @@ Get-AppxProvisionedPackage -Online | Where-Object {{ $_.DisplayName -eq $AppName
             // MSI (msiexec.exe)
             if (cmdLower.EndsWith("msiexec.exe") || cmdLower.EndsWith("msiexec"))
             {
-                // FIX: Nur /I vor Produktcode ersetzen, nicht blind überall
                 arguments = System.Text.RegularExpressions.Regex.Replace(
                     arguments,
                     @"(?i)/I\s*(?=\{|$|\s)",
@@ -373,18 +503,56 @@ Get-AppxProvisionedPackage -Online | Where-Object {{ $_.DisplayName -eq $AppName
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData)
             };
+
             foreach (var baseDir in searchDirs.Where(d => !string.IsNullOrEmpty(d)).Distinct())
             {
                 try
                 {
                     if (!Directory.Exists(baseDir)) continue;
+
+                    // 1. Direkter Programmordner: baseDir\AppName
                     foreach (var dir in Directory.GetDirectories(baseDir))
                     {
                         string dirName = Path.GetFileName(dir);
                         if (dirName.Equals(appName, StringComparison.OrdinalIgnoreCase))
                         {
-                            Directory.Delete(dir, true);
-                            log($"[Dateibereinigung] Ordner entfernt: {dirName}");
+                            try
+                            {
+                                Directory.Delete(dir, true);
+                                log($"[Dateibereinigung] Ordner entfernt: {dirName}");
+                            }
+                            catch { }
+                        }
+                    }
+
+                    // 2. Hersteller-Unterordner: baseDir\Publisher\AppName
+                    if (!string.IsNullOrWhiteSpace(publisher) &&
+                        !publisher.Equals("Unbekannt", StringComparison.OrdinalIgnoreCase) &&
+                        !publisher.Equals("Microsoft", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string pubDir = Path.Combine(baseDir, publisher);
+                        if (Directory.Exists(pubDir))
+                        {
+                            string subAppDir = Path.Combine(pubDir, appName);
+                            if (Directory.Exists(subAppDir))
+                            {
+                                try
+                                {
+                                    Directory.Delete(subAppDir, true);
+                                    log($"[Dateibereinigung] Hersteller-Ordner bereinigt: {publisher}\\{appName}");
+                                }
+                                catch { }
+                            }
+
+                            try
+                            {
+                                if (!Directory.EnumerateFileSystemEntries(pubDir).Any())
+                                {
+                                    Directory.Delete(pubDir, false);
+                                    log($"[Dateibereinigung] Leeren Hersteller-Ordner entfernt: {publisher}");
+                                }
+                            }
+                            catch { }
                         }
                     }
                 }
@@ -410,8 +578,34 @@ Get-AppxProvisionedPackage -Online | Where-Object {{ $_.DisplayName -eq $AppName
                     {
                         if (subkeyName.Equals(app.Name, StringComparison.OrdinalIgnoreCase))
                         {
-                            key.DeleteSubKeyTree(subkeyName, false);
-                            log($"[Registrybereinigung] Schlüssel entfernt: {subkeyName}");
+                            try
+                            {
+                                key.DeleteSubKeyTree(subkeyName, false);
+                                log($"[Registrybereinigung] Schlüssel entfernt: {subkeyName}");
+                            }
+                            catch { }
+                        }
+                        else if (!string.IsNullOrWhiteSpace(app.Publisher) &&
+                                 !app.Publisher.Equals("Unbekannt", StringComparison.OrdinalIgnoreCase) &&
+                                 !app.Publisher.Equals("Microsoft", StringComparison.OrdinalIgnoreCase) &&
+                                 subkeyName.Equals(app.Publisher, StringComparison.OrdinalIgnoreCase))
+                        {
+                            using RegistryKey? pubKey = key.OpenSubKey(subkeyName, true);
+                            if (pubKey != null)
+                            {
+                                foreach (string pubSubName in pubKey.GetSubKeyNames())
+                                {
+                                    if (pubSubName.Equals(app.Name, StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        try
+                                        {
+                                            pubKey.DeleteSubKeyTree(pubSubName, false);
+                                            log($"[Registrybereinigung] Schlüssel entfernt: {subkeyName}\\{pubSubName}");
+                                        }
+                                        catch { }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -439,8 +633,12 @@ Get-AppxProvisionedPackage -Online | Where-Object {{ $_.DisplayName -eq $AppName
                         {
                             if (Path.GetFileNameWithoutExtension(file).Equals(item.Name, StringComparison.OrdinalIgnoreCase))
                             {
-                                File.Delete(file);
-                                log($"[Shortcutbereinigung] Verknüpfung gelöscht: {Path.GetFileName(file)}");
+                                try
+                                {
+                                    File.Delete(file);
+                                    log($"[Shortcutbereinigung] Verknüpfung gelöscht: {Path.GetFileName(file)}");
+                                }
+                                catch { }
                             }
                         }
                     }

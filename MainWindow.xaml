@@ -303,6 +303,103 @@
             </Setter>
         </Style>
 
+        <!-- Moderner Fortschrittsbalken (links -> rechts) mit Glanzeffekt, wie bei Windows-Dialogen -->
+        <Style x:Key="TaskProgressBarStyle" TargetType="ProgressBar">
+            <Setter Property="Height" Value="14"/>
+            <Setter Property="Minimum" Value="0"/>
+            <Setter Property="Maximum" Value="100"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ProgressBar">
+                        <Grid SnapsToDevicePixels="True">
+                            <Border x:Name="PART_Track" Background="#15171E" BorderBrush="#2A2D35" BorderThickness="1" CornerRadius="7"/>
+
+                            <Grid x:Name="PART_Indicator" HorizontalAlignment="Left" Margin="1" ClipToBounds="True">
+                                <Border CornerRadius="6">
+                                    <Border.Background>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                            <GradientStop Color="#16A34A" Offset="0"/>
+                                            <GradientStop Color="#4AF626" Offset="1"/>
+                                        </LinearGradientBrush>
+                                    </Border.Background>
+                                </Border>
+                                <Border CornerRadius="6" Height="5" VerticalAlignment="Top" Margin="2,1,2,0" Opacity="0.35" Background="White"/>
+                                <Border x:Name="Shine" Width="90" HorizontalAlignment="Left" Opacity="0.6">
+                                    <Border.Background>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                            <GradientStop Color="#00FFFFFF" Offset="0"/>
+                                            <GradientStop Color="#AAFFFFFF" Offset="0.5"/>
+                                            <GradientStop Color="#00FFFFFF" Offset="1"/>
+                                        </LinearGradientBrush>
+                                    </Border.Background>
+                                    <Border.RenderTransform>
+                                        <TranslateTransform X="-90"/>
+                                    </Border.RenderTransform>
+                                    <Border.Triggers>
+                                        <EventTrigger RoutedEvent="FrameworkElement.Loaded">
+                                            <BeginStoryboard>
+                                                <Storyboard RepeatBehavior="Forever">
+                                                    <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)"
+                                                                     From="-90" To="1400" Duration="0:0:2.6"/>
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </EventTrigger>
+                                    </Border.Triggers>
+                                </Border>
+                            </Grid>
+
+                            <Grid x:Name="IndeterminateRoot" Margin="1" ClipToBounds="True" Visibility="Collapsed">
+                                <Border x:Name="IndeterminateBar" Width="160" HorizontalAlignment="Left" CornerRadius="6">
+                                    <Border.Background>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                            <GradientStop Color="#0016A34A" Offset="0"/>
+                                            <GradientStop Color="#4AF626" Offset="0.5"/>
+                                            <GradientStop Color="#0016A34A" Offset="1"/>
+                                        </LinearGradientBrush>
+                                    </Border.Background>
+                                    <Border.RenderTransform>
+                                        <TranslateTransform X="-160"/>
+                                    </Border.RenderTransform>
+                                </Border>
+                            </Grid>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsIndeterminate" Value="True">
+                                <Setter TargetName="PART_Indicator" Property="Visibility" Value="Collapsed"/>
+                                <Setter TargetName="IndeterminateRoot" Property="Visibility" Value="Visible"/>
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard x:Name="TaskIndeterminateAnimation">
+                                        <Storyboard RepeatBehavior="Forever">
+                                            <DoubleAnimation Storyboard.TargetName="IndeterminateBar"
+                                                             Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)"
+                                                             From="-160" To="1400" Duration="0:0:1.9">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <QuadraticEase EasingMode="EaseInOut"/>
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.EnterActions>
+                                <Trigger.ExitActions>
+                                    <StopStoryboard BeginStoryboardName="TaskIndeterminateAnimation"/>
+                                </Trigger.ExitActions>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Sichtbar nur, solange ein Vorgang Fortschritt meldet -->
+        <Style x:Key="ProgressPanelStyle" TargetType="FrameworkElement">
+            <Setter Property="Visibility" Value="Collapsed"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsProgressVisible}" Value="True">
+                    <Setter Property="Visibility" Value="Visible"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
         <Style TargetType="TextBox" x:Key="ModernTextBoxStyle">
             <Setter Property="Background" Value="#1A1C23"/>
             <Setter Property="Foreground" Value="White"/>
@@ -782,7 +879,19 @@
                 <RowDefinition Height="35"/>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
-                <RowDefinition Height="220"/>
+                <!-- Konsole: wächst während eines Vorgangs mit Fortschrittsanzeige, damit das Protokoll sichtbar bleibt -->
+                <RowDefinition>
+                    <RowDefinition.Style>
+                        <Style TargetType="RowDefinition">
+                            <Setter Property="Height" Value="220"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsProgressVisible}" Value="True">
+                                    <Setter Property="Height" Value="300"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </RowDefinition.Style>
+                </RowDefinition>
             </Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="220"/>
@@ -1078,6 +1187,7 @@
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="220"/>
+                                        <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
                                     <Grid Grid.Column="0">
                                         <TextBox Style="{StaticResource ModernTextBoxStyle}" 
@@ -1091,6 +1201,10 @@
                                               ItemsSource="{Binding AvailableSortModes}"
                                               SelectedItem="{Binding SoftwareSortMode}"
                                               ToolTip="Sortierung ändern. Standardmäßig werden neue Apps oben angezeigt."/>
+                                    <Button Grid.Column="2" Content="⟳  Aktualisieren" Margin="12,0,0,0" Height="38" Width="140"
+                                            Command="{Binding RefreshAppsCommand}"
+                                            Style="{StaticResource ModernButtonStyle}"
+                                            ToolTip="Die Liste aktualisiert sich automatisch bei jeder Installation und Deinstallation. Hier kann sie zusätzlich manuell neu eingelesen werden."/>
                                 </Grid>
 
                                 <DataGrid x:Name="dgSoftware" Grid.Row="1" Style="{StaticResource PremiumDataGridStyle}"
@@ -1154,6 +1268,7 @@
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="220"/>
+                                        <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
                                     <Grid Grid.Column="0">
                                         <TextBox Style="{StaticResource ModernTextBoxStyle}" 
@@ -1167,6 +1282,10 @@
                                               ItemsSource="{Binding AvailableSortModes}"
                                               SelectedItem="{Binding UwpSortMode}"
                                               ToolTip="Sortierung ändern. Standardmäßig werden neue Apps oben angezeigt."/>
+                                    <Button Grid.Column="2" Content="⟳  Aktualisieren" Margin="12,0,0,0" Height="38" Width="140"
+                                            Command="{Binding RefreshAppsCommand}"
+                                            Style="{StaticResource ModernButtonStyle}"
+                                            ToolTip="Die Liste aktualisiert sich automatisch bei jeder Installation und Deinstallation. Hier kann sie zusätzlich manuell neu eingelesen werden."/>
                                 </Grid>
 
                                 <DataGrid x:Name="dgUwp" Grid.Row="1" Style="{StaticResource PremiumDataGridStyle}"
@@ -1280,7 +1399,7 @@
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="Programmname" Binding="{Binding Name}" Width="180" />
                                 <DataGridTextColumn Header="Start-Pfad" Binding="{Binding Path}" Width="*" />
-                                <DataGridTextColumn Header="Bereich" Binding="{Binding RegistryKeyPath}" Width="90" />
+                                <DataGridTextColumn Header="Bereich" Binding="{Binding RegistryKeyPath}" Width="115" />
                                 <DataGridTemplateColumn Header="Status" Width="100">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
@@ -1335,8 +1454,12 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                    <TextBlock Text="{Binding StatusMessage}" Foreground="#4D9EFF" FontWeight="SemiBold" FontSize="13" Margin="0,0,0,5"/>
-                    <ProgressBar IsIndeterminate="{Binding IsBusy}">
+                    <Grid Margin="0,0,0,5">
+                        <TextBlock Text="{Binding StatusMessage}" Foreground="#4D9EFF" FontWeight="SemiBold" FontSize="13"/>
+                        <TextBlock Text="{Binding ProgressPercentText}" Foreground="#4AF626" FontWeight="Bold" FontSize="12"
+                                   FontFamily="Consolas" HorizontalAlignment="Right" Style="{StaticResource ProgressPanelStyle}"/>
+                    </Grid>
+                    <ProgressBar IsIndeterminate="{Binding IsStatusBarIndeterminate}" Minimum="0" Maximum="100" Value="{Binding ProgressValue, Mode=OneWay}">
                         <ProgressBar.Style>
                             <Style TargetType="ProgressBar" BasedOn="{StaticResource PremiumProgressBarStyle}">
                                 <Setter Property="Opacity" Value="0"/>
@@ -1399,6 +1522,7 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
 
@@ -1436,8 +1560,32 @@
                 </UniformGrid>
             </Border>
 
+            <!-- Fortschrittsanzeige: aktueller Schritt, Balken (links -> rechts), Vorgang + Prozent -->
+            <Border Grid.Row="2" Background="#0C1014" Padding="18,11,18,10" BorderBrush="#1C2025" BorderThickness="0,0,0,1"
+                    Style="{StaticResource ProgressPanelStyle}">
+                <StackPanel>
+                    <TextBlock Text="{Binding ProgressStep}" Foreground="White" FontSize="13" FontWeight="SemiBold"
+                               TextTrimming="CharacterEllipsis" Margin="0,0,0,8"/>
+                    <ProgressBar Style="{StaticResource TaskProgressBarStyle}"
+                                 Value="{Binding ProgressValue, Mode=OneWay}"
+                                 IsIndeterminate="{Binding IsProgressIndeterminate, Mode=OneWay}"/>
+                    <Grid Margin="0,8,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis">
+                            <Run Text="Vorgang:" Foreground="#555A67" FontWeight="SemiBold"/>
+                            <Run Text="{Binding ProgressDetail, Mode=OneWay}" Foreground="#A8B0C2"/>
+                        </TextBlock>
+                        <TextBlock Grid.Column="1" Text="{Binding ProgressPercentText}" Foreground="#4AF626"
+                                   FontFamily="Consolas" FontSize="16" FontWeight="Bold" Margin="16,0,0,0" VerticalAlignment="Center"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
             <!-- Log-Ausgabe (bleibt TextBox, aber mit farbiger Syntax-Hervorhebung via Code-Behind-Update) -->
-            <TextBox Grid.Row="2" x:Name="TxtLog"
+            <TextBox Grid.Row="3" x:Name="TxtLog"
                      Text="{Binding LogText, Mode=OneWay}"
                      IsReadOnly="True" TextWrapping="Wrap"
                      VerticalScrollBarVisibility="Auto"
@@ -1505,11 +1653,23 @@
                             </TextBlock.Style>
                         </TextBlock>
                     </Grid>
-                    <ProgressBar Height="6" IsIndeterminate="{Binding IsBusy}" Style="{StaticResource PremiumProgressBarStyle}">
-                        <ProgressBar.Effect>
-                            <DropShadowEffect Color="#4D9EFF" BlurRadius="6" ShadowDepth="0" Opacity="0.7"/>
-                        </ProgressBar.Effect>
-                    </ProgressBar>
+                    <TextBlock Text="{Binding ProgressStep}" Foreground="White" FontSize="12" FontWeight="SemiBold"
+                               TextTrimming="CharacterEllipsis" Margin="0,2,0,7" Style="{StaticResource ProgressPanelStyle}"/>
+                    <ProgressBar Style="{StaticResource TaskProgressBarStyle}" Height="12"
+                                 Value="{Binding ProgressValue, Mode=OneWay}"
+                                 IsIndeterminate="{Binding IsStatusBarIndeterminate, Mode=OneWay}"/>
+                    <Grid Margin="0,7,0,0" Style="{StaticResource ProgressPanelStyle}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" FontSize="11">
+                            <Run Text="Vorgang:" Foreground="#555A67" FontWeight="SemiBold"/>
+                            <Run Text="{Binding ProgressDetail, Mode=OneWay}" Foreground="#A8B0C2"/>
+                        </TextBlock>
+                        <TextBlock Grid.Column="1" Text="{Binding ProgressPercentText}" Foreground="#4AF626"
+                                   FontFamily="Consolas" FontSize="15" FontWeight="Bold" Margin="16,0,0,0" VerticalAlignment="Center"/>
+                    </Grid>
                 </StackPanel>
             </Grid>
         </Border>

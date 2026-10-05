@@ -36,6 +36,23 @@ namespace SystemOptimierer.Models
         public string InstallDateDisplay { get; set; } = "Unbekannt";
         public long EstimatedSizeKb { get; set; }
 
+        /// <summary>
+        /// Eindeutige Kennung für den Abgleich bei Live-Aktualisierungen
+        /// (Registry-Pfad bei Desktop-Programmen, Paketname bei Store-Apps).
+        /// </summary>
+        public string Identity => IsUwp
+            ? "uwp:" + PackageFullName
+            : "reg:" + (string.IsNullOrEmpty(RegistryPath) ? Name : RegistryPath);
+
+        /// <summary>Prüft, ob sich die in der Liste angezeigten Daten unterscheiden (z. B. nach einem Update).</summary>
+        public bool HasSameDisplayData(SoftwareItem other) =>
+            Name == other.Name &&
+            Publisher == other.Publisher &&
+            DisplayVersion == other.DisplayVersion &&
+            InstallDateDisplay == other.InstallDateDisplay &&
+            InstallDateTime == other.InstallDateTime &&
+            EstimatedSizeKb == other.EstimatedSizeKb;
+
         public event PropertyChangedEventHandler? PropertyChanged;
         protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
         {

@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Win32;
@@ -15,16 +17,54 @@ namespace SystemOptimierer.Services
         private readonly ICommandExecutionService _cmd;
         private readonly IPowerShellService _ps;
 
-        private static readonly string[] ProtectedKeywords = {
-            "microsoft", "windows", "intel", "amd", "nvidia", "system",
-            "drivers", "framework", "runtime", "dotnet", "visual studio",
-            "directx", "office", "defender", "update"
+        /// <summary>
+        /// Schlüsselwörter, die als eigenständige Wörter oder Phrasen auf kritische System-,
+        /// Treiber- oder Laufzeitkomponenten hinweisen. Wortgrenzen verhindern Fehlalarme
+        /// (z. B. "amd" in "StreamDeck" oder "office" in "LibreOffice").
+        /// </summary>
+        private static readonly (string Label, Regex Pattern)[] ProtectedPatterns =
+        {
+            ("microsoft", new Regex(@"\bmicrosoft\b", RegexOptions.IgnoreCase | RegexOptions.Compiled)),
+            ("windows", new Regex(@"\bwindows\b", RegexOptions.IgnoreCase | RegexOptions.Compiled)),
+            ("intel", new Regex(@"\bintel\b", RegexOptions.IgnoreCase | RegexOptions.Compiled)),
+            ("amd", new Regex(@"\bamd\b", RegexOptions.IgnoreCase | RegexOptions.Compiled)),
+            ("nvidia", new Regex(@"\bnvidia\b", RegexOptions.IgnoreCase | RegexOptions.Compiled)),
+            ("drivers", new Regex(@"\bdrivers?\b", RegexOptions.IgnoreCase | RegexOptions.Compiled)),
+            ("framework", new Regex(@"\b\.?net\s+framework\b|\bframework\b", RegexOptions.IgnoreCase | RegexOptions.Compiled)),
+            ("runtime", new Regex(@"\bruntime\b|\bredistributable\b", RegexOptions.IgnoreCase | RegexOptions.Compiled)),
+            ("dotnet", new Regex(@"\bdotnet\b|\b\.net\b", RegexOptions.IgnoreCase | RegexOptions.Compiled)),
+            ("visual studio", new Regex(@"\bvisual\s+studio\b", RegexOptions.IgnoreCase | RegexOptions.Compiled)),
+            ("directx", new Regex(@"\bdirectx\b", RegexOptions.IgnoreCase | RegexOptions.Compiled)),
+            ("defender", new Regex(@"\bdefender\b", RegexOptions.IgnoreCase | RegexOptions.Compiled))
         };
+
+        /// <summary>
+        /// Ordner, die bei der Reste-Bereinigung niemals gelöscht werden dürfen – selbst wenn ein
+        /// Programm denselben Namen trägt. Verhindert, dass ein unglücklicher Programmname einen
+        /// Systemordner trifft.
+        /// </summary>
+        private static readonly HashSet<string> ProtectedFolderNames = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "Windows", "WindowsApps", "Windows Defender", "Windows NT", "Common Files",
+            "Microsoft", "Microsoft Shared", "Microsoft.NET", "Internet Explorer",
+            "System32", "SysWOW64", "Drivers", "System", "Desktop", "Documents",
+            "Downloads", "Pictures", "Music", "Videos", "Favorites", "Start Menu", "Templates",
+            "Programs", "Startup", "AppData", "Local", "Roaming", "LocalLow", "Package Cache"
+        };
+
+        /// <summary>Registry-Zweige, die nie als Programmrest gelöscht werden dürfen.</summary>
+        private static readonly HashSet<string> ProtectedRegistryKeys = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "Classes", "Clients", "Microsoft", "Policies", "RegisteredApplications",
+            "WOW6432Node", "Windows", "Windows NT", "System", "Setup", "ODBC", "Control Panel"
+        };
+
+        private static readonly string[] ExecutableExtensions = { ".exe", ".com", ".bat", ".cmd" };
 
         public UninstallerService(ICommandExecutionService commandService, IPowerShellService powerShellService)
         {
-            _cmd = commandService;
-            _ps = powerShellService;
+            _cmd = commandService ?? throw new ArgumentNullException(nameof(commandService));
+            _ps = powerShellService ?? throw new ArgumentNullException(nameof(powerShellService));
         }
 
         public List<SoftwareItem> GetInstalledSoftware()
@@ -33,25 +73,39 @@ namespace SystemOptimierer.Services
             ScanRegistryKey(Registry.LocalMachine, AppRegistryPaths.Uninstall, apps);
             ScanRegistryKey(Registry.LocalMachine, AppRegistryPaths.UninstallWow6432, apps);
             ScanRegistryKey(Registry.CurrentUser, AppRegistryPaths.Uninstall, apps);
+
+            // Bei Namensgleichheit (z. B. Schatten-Eintrag in WOW6432Node oder HKCU) den vollständigsten Eintrag bevorzugen
             return apps
                 .Where(a => !string.IsNullOrWhiteSpace(a.Name))
                 .GroupBy(a => a.Name.Trim(), StringComparer.OrdinalIgnoreCase)
-                .Select(g => g.First())
+                .Select(g => g
+                    .OrderByDescending(a => !string.IsNullOrWhiteSpace(a.UninstallString))
+                    .ThenByDescending(a => a.EstimatedSizeKb)
+                    .First())
                 .ToList();
         }
 
         public async Task<List<SoftwareItem>> GetInstalledUwpAppsAsync(Action<string> log, CancellationToken ct)
         {
             var uwpApps = new List<SoftwareItem>();
+            // Bereits gesehene Pakete: verhindert doppelte Einträge in O(1) statt O(n) pro Paket.
+            var seenPackages = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             string script = @"
-Get-AppxPackage -AllUsers | Where-Object { -not $_.IsFramework -and $_.NonRemovable -ne $true } | ForEach-Object {
+$pkgs = @()
+try {
+    $pkgs = @(Get-AppxPackage -AllUsers -ErrorAction Stop)
+} catch {
+    $pkgs = @(Get-AppxPackage -ErrorAction SilentlyContinue)
+}
+$pkgs | Where-Object { -not $_.IsFramework -and $_.NonRemovable -ne $true } | ForEach-Object {
     $date = 'Unbekannt'
-    if ($_.InstallLocation -and (Test-Path $_.InstallLocation)) {
-        $date = (Get-Item $_.InstallLocation).CreationTime.ToString('yyyyMMdd')
+    if ($_.InstallLocation) {
+        # Direkter .NET-Aufruf statt Test-Path + Get-Item (zwei Cmdlet-Aufrufe pro Paket weniger)
+        try { $date = [System.IO.Directory]::GetCreationTimeUtc($_.InstallLocation).ToString('yyyyMMdd', [System.Globalization.CultureInfo]::InvariantCulture) } catch { }
     }
     $obj = [PSCustomObject]@{
         Name            = if ($_.Name) { $_.Name } else { $_.PackageFullName }
-        Version         = $_.Version
+        Version         = [string]$_.Version
         Publisher       = if ($_.Publisher) { $_.Publisher } else { 'Microsoft Store' }
         PackageFullName = $_.PackageFullName
         InstallDate     = $date
@@ -62,56 +116,60 @@ Get-AppxPackage -AllUsers | Where-Object { -not $_.IsFramework -and $_.NonRemova
             log("Führe erweiterten PowerShell-Scan für alle Windows-Apps durch...");
             try
             {
-                await _ps.RunScriptAsync(script,
+                await _ps.RunScriptAsync(
+                    script,
                     onOutput: line =>
                     {
-                        if (string.IsNullOrWhiteSpace(line) || !line.Trim().StartsWith("{")) return;
+                        if (string.IsNullOrWhiteSpace(line) || !line.TrimStart().StartsWith('{')) return;
                         try
                         {
                             using var doc = JsonDocument.Parse(line.Trim());
                             var root = doc.RootElement;
-                            string displayName = root.GetProperty("Name").GetString() ?? string.Empty;
-                            string version = root.GetProperty("Version").GetString() ?? string.Empty;
-                            string publisher = root.GetProperty("Publisher").GetString() ?? string.Empty;
-                            string packageFullName = root.GetProperty("PackageFullName").GetString() ?? string.Empty;
-                            string rawDate = root.GetProperty("InstallDate").GetString() ?? "Unbekannt";
+                            string displayName = GetJsonString(root, "Name");
+                            string version = GetJsonString(root, "Version");
+                            string publisher = GetJsonString(root, "Publisher");
+                            string packageFullName = GetJsonString(root, "PackageFullName");
+                            string rawDate = GetJsonString(root, "InstallDate");
+
+                            if (string.IsNullOrWhiteSpace(packageFullName)) return;
 
                             DateTime? installDateTime = null;
                             string displayDate = "Unbekannt";
-                            if (rawDate != "Unbekannt" && DateTime.TryParseExact(rawDate, "yyyyMMdd",
-                                System.Globalization.CultureInfo.InvariantCulture,
-                                System.Globalization.DateTimeStyles.None, out DateTime pDate))
+                            if (rawDate.Length > 0 && !rawDate.Equals("Unbekannt", StringComparison.Ordinal) &&
+                                DateTime.TryParseExact(rawDate, "yyyyMMdd",
+                                    CultureInfo.InvariantCulture,
+                                    DateTimeStyles.None, out DateTime parsedDate))
                             {
-                                installDateTime = pDate;
-                                displayDate = pDate.ToString("dd.MM.yyyy");
+                                installDateTime = parsedDate;
+                                displayDate = parsedDate.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture);
                             }
 
                             lock (uwpApps)
                             {
-                                if (!uwpApps.Any(a => a.PackageFullName.Equals(packageFullName, StringComparison.OrdinalIgnoreCase)))
+                                if (!seenPackages.Add(packageFullName)) return;
+
+                                uwpApps.Add(new SoftwareItem
                                 {
-                                    uwpApps.Add(new SoftwareItem
-                                    {
-                                        Name = displayName,
-                                        Publisher = publisher,
-                                        DisplayVersion = version,
-                                        UninstallString = string.Empty,
-                                        InstallDate = displayDate,
-                                        InstallDateTime = installDateTime,
-                                        InstallDateDisplay = displayDate,
-                                        EstimatedSize = "Unbekannt",
-                                        EstimatedSizeKb = 0,
-                                        IsUwp = true,
-                                        PackageFullName = packageFullName
-                                    });
-                                }
+                                    Name = displayName,
+                                    Publisher = publisher,
+                                    DisplayVersion = version,
+                                    UninstallString = string.Empty,
+                                    InstallDate = displayDate,
+                                    InstallDateTime = installDateTime,
+                                    InstallDateDisplay = displayDate,
+                                    EstimatedSize = "Unbekannt",
+                                    EstimatedSizeKb = 0,
+                                    IsUwp = true,
+                                    PackageFullName = packageFullName
+                                });
                             }
                         }
-                        catch { }
+                        catch
+                        {
+                        }
                     },
-                    onError: err => { },
-                    cancellationToken: ct
-                );
+                    onError: err => { if (!string.IsNullOrWhiteSpace(err)) log($"[PS-ERR] {err.Trim()}"); },
+                    cancellationToken: ct);
             }
             catch (Exception ex)
             {
@@ -120,6 +178,12 @@ Get-AppxPackage -AllUsers | Where-Object { -not $_.IsFramework -and $_.NonRemova
             return uwpApps;
         }
 
+        /// <summary>Liest eine Zeichenfolge aus dem JSON-Objekt, ohne bei fehlenden Feldern zu werfen.</summary>
+        private static string GetJsonString(JsonElement element, string propertyName) =>
+            element.TryGetProperty(propertyName, out JsonElement value) && value.ValueKind == JsonValueKind.String
+                ? value.GetString() ?? string.Empty
+                : string.Empty;
+
         /// <summary>
         /// Öffnet einen als "HKEY_LOCAL_MACHINE\..." bzw. "HKEY_CURRENT_USER\..." gespeicherten Registry-Pfad.
         /// </summary>
@@ -127,7 +191,7 @@ Get-AppxPackage -AllUsers | Where-Object { -not $_.IsFramework -and $_.NonRemova
         {
             var (root, subKeyPath) = SplitRegistryPath(registryPath);
             if (root == null || string.IsNullOrEmpty(subKeyPath)) return null;
-            try { return root.OpenSubKey(subKeyPath); }
+            try { return root.OpenSubKey(subKeyPath, writable: false); }
             catch { return null; }
         }
 
@@ -159,7 +223,7 @@ Get-AppxPackage -AllUsers | Where-Object { -not $_.IsFramework -and $_.NonRemova
         /// <summary>
         /// Prüft, ob der Uninstall-Eintrag eines Desktop-Programms noch in der Registry existiert.
         /// </summary>
-        private bool IsStillInstalled(SoftwareItem item)
+        private static bool IsStillInstalled(SoftwareItem item)
         {
             if (item.IsUwp) return true; // Store-Apps werden per PowerShell verifiziert
             if (string.IsNullOrEmpty(item.RegistryPath)) return true;
@@ -179,28 +243,32 @@ Get-AppxPackage -AllUsers | Where-Object { -not $_.IsFramework -and $_.NonRemova
         {
             try
             {
-                using RegistryKey? key = root.OpenSubKey(path);
+                using RegistryKey? key = root.OpenSubKey(path, writable: false);
                 if (key == null) return;
                 string[] names = key.GetSubKeyNames();
                 Array.Sort(names, StringComparer.OrdinalIgnoreCase);
                 hash.Add(names.Length);
                 foreach (string name in names) hash.Add(name, StringComparer.OrdinalIgnoreCase);
             }
-            catch { }
+            catch
+            {
+            }
         }
 
         public async Task<bool> UninstallSoftwareAsync(SoftwareItem item, bool cleanLeftovers, Action<string> log, CancellationToken ct)
         {
-            string matchedKeyword = ProtectedKeywords
-                .FirstOrDefault(kw => item.Name.Contains(kw, StringComparison.OrdinalIgnoreCase)) ?? string.Empty;
+            ArgumentNullException.ThrowIfNull(item);
+            ArgumentNullException.ThrowIfNull(log);
+
+            string matchedKeyword = GetMatchedProtectedKeyword(item.Name);
             if (!string.IsNullOrEmpty(matchedKeyword))
             {
                 log($"[SICHERHEIT] '{item.Name}' enthält das geschützte Schlüsselwort '{matchedKeyword}'.");
-                log($"[SICHERHEIT] Deinstallation wurde ZUM SCHUTZ DES SYSTEMS BLOCKIERT.\n");
+                log("[SICHERHEIT] Deinstallation wurde ZUM SCHUTZ DES SYSTEMS BLOCKIERT.\n");
                 return false;
             }
 
-            log($"--- DEINSTALLATION VON {item.Name.ToUpper()} GESTARTET ---");
+            log($"--- DEINSTALLATION VON {item.Name.ToUpperInvariant()} GESTARTET ---");
 
             bool removed = item.IsUwp
                 ? await UninstallStoreAppAsync(item, log, ct)
@@ -220,11 +288,24 @@ Get-AppxPackage -AllUsers | Where-Object { -not $_.IsFramework -and $_.NonRemova
                 log("\n--- STARTE DATENMÜLL-BEREINIGUNG ---");
                 try { CleanLeftoverFiles(item.Name, item.Publisher, log); } catch { }
                 try { CleanShortcutsAndIconCache(item, log); } catch { }
-                if (!item.IsUwp) { try { CleanLeftoverRegistry(item, log); } catch { } }
+                if (!item.IsUwp)
+                {
+                    try { CleanLeftoverRegistry(item, log); } catch { }
+                }
             }
 
             log($"[ERFOLG] '{item.Name}' wurde erfolgreich deinstalliert.\n");
             return true;
+        }
+
+        private static string GetMatchedProtectedKeyword(string appName)
+        {
+            if (string.IsNullOrWhiteSpace(appName)) return string.Empty;
+            foreach (var (label, pattern) in ProtectedPatterns)
+            {
+                if (pattern.IsMatch(appName)) return label;
+            }
+            return string.Empty;
         }
 
         private async Task<bool> UninstallStoreAppAsync(SoftwareItem item, Action<string> log, CancellationToken ct)
@@ -233,23 +314,31 @@ Get-AppxPackage -AllUsers | Where-Object { -not $_.IsFramework -and $_.NonRemova
             string removeScript = $@"
 $PackageName = '{EscapePowerShellLiteral(item.PackageFullName)}'
 $AppName     = '{EscapePowerShellLiteral(item.Name)}'
-try {{
-    Remove-AppxPackage -Package $PackageName -AllUsers -ErrorAction Stop
-}} catch {{
-    try {{ Remove-AppxPackage -Package $PackageName -ErrorAction Stop }}
-    catch {{ Write-Output ('[FEHLER] ' + $_.Exception.Message) }}
-}}
+
 Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue |
     Where-Object {{ $_.DisplayName -eq $AppName -or $_.PackageName -eq $PackageName }} |
     Remove-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Out-Null
-if (Get-AppxPackage -AllUsers | Where-Object {{ $_.PackageFullName -eq $PackageName }}) {{
+
+try {{
+    Remove-AppxPackage -Package $PackageName -AllUsers -ErrorAction Stop
+}} catch {{
+    try {{
+        Remove-AppxPackage -Package $PackageName -ErrorAction Stop
+    }} catch {{
+        Write-Output ('[FEHLER] ' + $_.Exception.Message)
+    }}
+}}
+
+$stillInstalled = @(Get-AppxPackage -ErrorAction SilentlyContinue | Where-Object {{ $_.PackageFullName -eq $PackageName }})
+if ($stillInstalled.Count -gt 0) {{
     Write-Output 'STATUS:STILL_INSTALLED'
 }} else {{
     Write-Output 'STATUS:REMOVED'
 }}
 ";
             bool removed = false;
-            await _ps.RunScriptAsync(removeScript,
+            await _ps.RunScriptAsync(
+                removeScript,
                 onOutput: line =>
                 {
                     string trimmed = line.Trim();
@@ -277,6 +366,7 @@ if (Get-AppxPackage -AllUsers | Where-Object {{ $_.PackageFullName -eq $PackageN
             if (string.IsNullOrWhiteSpace(uninstallString))
                 return RemoveOrphanedEntry(item, "Der Eintrag enthält keinen Deinstallationsbefehl.", cleanLeftovers, log);
 
+            uninstallString = Environment.ExpandEnvironmentVariables(uninstallString);
             var (command, arguments) = ParseUninstallString(uninstallString);
 
             if (Path.IsPathRooted(command) && !File.Exists(command))
@@ -285,7 +375,10 @@ if (Get-AppxPackage -AllUsers | Where-Object {{ $_.PackageFullName -eq $PackageN
             log($"[Aktion] Starte: {Path.GetFileName(command)} {arguments}");
 
             int exitCode = await _cmd.RunCommandAndWaitForProcessTreeAsync(
-                command, arguments, log, log,
+                command,
+                arguments,
+                log,
+                log,
                 isFinished: () => !IsStillInstalled(item),
                 ct);
             if (ct.IsCancellationRequested) return false;
@@ -312,7 +405,7 @@ if (Get-AppxPackage -AllUsers | Where-Object {{ $_.PackageFullName -eq $PackageN
             return false;
         }
 
-        private async Task<bool> WaitUntilRemovedAsync(SoftwareItem item, TimeSpan timeout, CancellationToken ct)
+        private static async Task<bool> WaitUntilRemovedAsync(SoftwareItem item, TimeSpan timeout, CancellationToken ct)
         {
             var deadline = DateTime.UtcNow + timeout;
             while (true)
@@ -328,7 +421,7 @@ if (Get-AppxPackage -AllUsers | Where-Object {{ $_.PackageFullName -eq $PackageN
         /// Verwaister Eintrag (Programm existiert nicht mehr, nur die Registry verweist noch darauf):
         /// Nur mit aktivierter Bereinigung wird genau DIESER Eintrag entfernt.
         /// </summary>
-        private bool RemoveOrphanedEntry(SoftwareItem item, string reason, bool cleanLeftovers, Action<string> log)
+        private static bool RemoveOrphanedEntry(SoftwareItem item, string reason, bool cleanLeftovers, Action<string> log)
         {
             log($"[Hinweis] {reason}");
             if (!cleanLeftovers)
@@ -354,63 +447,77 @@ if (Get-AppxPackage -AllUsers | Where-Object {{ $_.PackageFullName -eq $PackageN
             return !IsStillInstalled(item);
         }
 
-        private static string EscapePowerShellLiteral(string value) => value.Replace("'", "''");
+        private static string EscapePowerShellLiteral(string value) => (value ?? string.Empty).Replace("'", "''");
 
-        private void ScanRegistryKey(RegistryKey rootKey, string subKeyPath, List<SoftwareItem> apps)
+        private static void ScanRegistryKey(RegistryKey rootKey, string subKeyPath, List<SoftwareItem> apps)
         {
             try
             {
-                using RegistryKey? key = rootKey.OpenSubKey(subKeyPath);
+                using RegistryKey? key = rootKey.OpenSubKey(subKeyPath, writable: false);
                 if (key == null) return;
                 foreach (string subkeyName in key.GetSubKeyNames())
                 {
                     try
                     {
-                        using RegistryKey? subkey = key.OpenSubKey(subkeyName);
+                        using RegistryKey? subkey = key.OpenSubKey(subkeyName, writable: false);
                         if (subkey == null) continue;
+
                         var systemComponent = subkey.GetValue("SystemComponent");
-                        if (systemComponent != null && Convert.ToInt32(systemComponent) == 1) continue;
+                        if (systemComponent != null && Convert.ToInt32(systemComponent, CultureInfo.InvariantCulture) == 1) continue;
+
                         var parentKeyName = subkey.GetValue("ParentKeyName");
                         if (parentKeyName != null && !string.IsNullOrEmpty(parentKeyName.ToString())) continue;
+
                         string? displayName = subkey.GetValue("DisplayName")?.ToString();
                         if (string.IsNullOrWhiteSpace(displayName)) continue;
+
                         string uninstallString = subkey.GetValue("UninstallString")?.ToString() ?? string.Empty;
                         if (string.IsNullOrWhiteSpace(uninstallString))
                             uninstallString = subkey.GetValue("QuietUninstallString")?.ToString() ?? string.Empty;
-                        if (displayName.Contains("Security Update") ||
-                            displayName.Contains("Update for Microsoft") ||
-                            displayName.StartsWith("KB", StringComparison.OrdinalIgnoreCase)) continue;
+
+                        if (displayName.Contains("Security Update", StringComparison.OrdinalIgnoreCase) ||
+                            displayName.Contains("Update for Microsoft", StringComparison.OrdinalIgnoreCase) ||
+                            displayName.StartsWith("KB", StringComparison.OrdinalIgnoreCase))
+                            continue;
+
                         string publisher = subkey.GetValue("Publisher")?.ToString() ?? "Unbekannt";
                         string displayVersion = subkey.GetValue("DisplayVersion")?.ToString() ?? "Unbekannt";
-                        string installDateStr = subkey.GetValue("InstallDate")?.ToString() ?? string.Empty;
+                        string installDateStr = subkey.GetValue("InstallDate")?.ToString()?.Trim() ?? string.Empty;
+
                         DateTime? installDateTime = null;
                         string installDateDisplay = "Unbekannt";
                         if (!string.IsNullOrEmpty(installDateStr) && installDateStr.Length == 8 &&
                             DateTime.TryParseExact(installDateStr, "yyyyMMdd",
-                                System.Globalization.CultureInfo.InvariantCulture,
-                                System.Globalization.DateTimeStyles.None, out DateTime pDate))
+                                CultureInfo.InvariantCulture,
+                                DateTimeStyles.None, out DateTime pDate))
                         {
                             installDateTime = pDate;
-                            installDateDisplay = pDate.ToString("dd.MM.yyyy");
+                            installDateDisplay = pDate.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture);
                         }
                         else if (!string.IsNullOrEmpty(installDateStr))
                         {
                             installDateDisplay = installDateStr;
                         }
+
                         long estimatedSizeKb = 0;
                         var sizeVal = subkey.GetValue("EstimatedSize");
-                        if (sizeVal != null) { try { estimatedSizeKb = Convert.ToInt64(sizeVal); } catch { } }
+                        if (sizeVal != null)
+                        {
+                            try { estimatedSizeKb = Convert.ToInt64(sizeVal, CultureInfo.InvariantCulture); } catch { }
+                        }
+
                         string estimatedSizeStr = "Unbekannt";
                         if (estimatedSizeKb > 0)
                         {
                             double sizeMb = estimatedSizeKb / 1024.0;
                             estimatedSizeStr = sizeMb >= 1024 ? $"{sizeMb / 1024.0:F2} GB" : $"{sizeMb:F1} MB";
                         }
+
                         apps.Add(new SoftwareItem
                         {
-                            Name = displayName,
-                            Publisher = publisher,
-                            DisplayVersion = displayVersion,
+                            Name = displayName.Trim(),
+                            Publisher = publisher.Trim(),
+                            DisplayVersion = displayVersion.Trim(),
                             UninstallString = uninstallString,
                             InstallDate = installDateDisplay,
                             InstallDateTime = installDateTime,
@@ -422,47 +529,64 @@ if (Get-AppxPackage -AllUsers | Where-Object {{ $_.PackageFullName -eq $PackageN
                             IsUwp = false
                         });
                     }
-                    catch { }
+                    catch
+                    {
+                    }
                 }
             }
-            catch { }
+            catch
+            {
+            }
         }
 
         /// <summary>
-        /// Erkennt MSI, InnoSetup, NSIS und fügt passende Silent-Parameter hinzu.
+        /// Zerlegt einen Deinstallationsbefehl in Programm und Argumente. Berücksichtigt
+        /// Anführungszeichen und – entscheidend – nicht angeführte Pfade mit Leerzeichen
+        /// (z. B. <c>C:\Program Files\App\uninstall.exe /S</c>).
         /// </summary>
-        private (string Command, string Arguments) ParseUninstallString(string uninstallString)
+        private static (string Command, string Arguments) ParseUninstallString(string uninstallString)
         {
-            uninstallString = uninstallString.Trim();
-            string command; string arguments = string.Empty;
-            if (uninstallString.StartsWith("\""))
+            string text = uninstallString.Trim();
+            string command;
+            string arguments;
+
+            if (text.StartsWith('"'))
             {
-                int nextQuote = uninstallString.IndexOf("\"", 1);
-                if (nextQuote > 0)
+                int closingQuote = text.IndexOf('"', 1);
+                if (closingQuote > 1)
                 {
-                    command = uninstallString.Substring(1, nextQuote - 1);
-                    arguments = uninstallString.Substring(nextQuote + 1).Trim();
+                    command = text[1..closingQuote];
+                    arguments = text[(closingQuote + 1)..].Trim();
                 }
-                else { command = uninstallString.Replace("\"", ""); }
+                else
+                {
+                    command = text.Replace("\"", string.Empty);
+                    arguments = string.Empty;
+                }
             }
             else
             {
-                int firstSpace = uninstallString.IndexOf(" ");
-                if (firstSpace > 0)
+                int executableEnd = FindExecutableEnd(text);
+                if (executableEnd > 0)
                 {
-                    command = uninstallString.Substring(0, firstSpace);
-                    arguments = uninstallString.Substring(firstSpace + 1).Trim();
+                    command = text[..executableEnd].Trim();
+                    arguments = text[executableEnd..].Trim();
                 }
-                else { command = uninstallString; }
+                else
+                {
+                    int firstSpace = text.IndexOf(' ');
+                    command = firstSpace > 0 ? text[..firstSpace] : text;
+                    arguments = firstSpace > 0 ? text[(firstSpace + 1)..].Trim() : string.Empty;
+                }
             }
 
             string cmdLower = command.ToLowerInvariant();
             string argsLower = arguments.ToLowerInvariant();
 
             // MSI (msiexec.exe)
-            if (cmdLower.EndsWith("msiexec.exe") || cmdLower.EndsWith("msiexec"))
+            if (cmdLower.EndsWith("msiexec.exe", StringComparison.Ordinal) || cmdLower.EndsWith("msiexec", StringComparison.Ordinal))
             {
-                arguments = System.Text.RegularExpressions.Regex.Replace(
+                arguments = Regex.Replace(
                     arguments,
                     @"(?i)/I\s*(?=\{|$|\s)",
                     "/X ");
@@ -479,7 +603,7 @@ if (Get-AppxPackage -AllUsers | Where-Object {{ $_.PackageFullName -eq $PackageN
                     arguments += " /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-";
             }
             // NSIS (uninstall.exe mit typischen Namen)
-            else if (cmdLower.EndsWith("uninstall.exe") || cmdLower.EndsWith("uninst.exe"))
+            else if (cmdLower.EndsWith("uninstall.exe", StringComparison.Ordinal) || cmdLower.EndsWith("uninst.exe", StringComparison.Ordinal))
             {
                 if (!argsLower.Contains("/s") && !argsLower.Contains("/silent"))
                     arguments += " /S";
@@ -491,159 +615,253 @@ if (Get-AppxPackage -AllUsers | Where-Object {{ $_.PackageFullName -eq $PackageN
                     arguments += " /s /sms";
             }
 
-            return (command, arguments);
+            return (command, arguments.Trim());
         }
 
-        private void CleanLeftoverFiles(string appName, string publisher, Action<string> log)
+        /// <summary>
+        /// Liefert die Position direkt hinter einer ausführbaren Datei in einem nicht angeführten
+        /// Pfad oder -1, wenn keine gefunden wurde.
+        /// </summary>
+        private static int FindExecutableEnd(string text)
         {
-            var searchDirs = new List<string> {
-                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
-                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData)
+            foreach (string extension in ExecutableExtensions)
+            {
+                int index = text.IndexOf(extension, StringComparison.OrdinalIgnoreCase);
+                while (index >= 0)
+                {
+                    int end = index + extension.Length;
+                    if (end == text.Length || text[end] == ' ' || text[end] == '\t')
+                        return end;
+                    index = text.IndexOf(extension, index + 1, StringComparison.OrdinalIgnoreCase);
+                }
+            }
+            return -1;
+        }
+
+        /// <summary>
+        /// Entfernt übrig gebliebene Programmordner. In Benutzerprofilen (AppData) werden nur noch
+        /// LEERE Ordner gelöscht: Dort liegen Einstellungen, Spielstände und Caches, die ein Nutzer
+        /// nach einer Neuinstallation oft weiterverwenden möchte.
+        /// </summary>
+        private static void CleanLeftoverFiles(string appName, string publisher, Action<string> log)
+        {
+            if (string.IsNullOrWhiteSpace(appName)) return;
+
+            string name = appName.Trim();
+            if (name.Length < 3 || ProtectedFolderNames.Contains(name)) return;
+
+            var searchDirs = new (string Path, bool MayDeleteNonEmpty)[]
+            {
+                (Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), true),
+                (Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), true),
+                (Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), true),
+                (Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), false),
+                (Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), false)
             };
 
-            foreach (var baseDir in searchDirs.Where(d => !string.IsNullOrEmpty(d)).Distinct())
+            foreach (var (baseDir, mayDeleteNonEmpty) in searchDirs)
             {
-                try
-                {
-                    if (!Directory.Exists(baseDir)) continue;
+                if (string.IsNullOrEmpty(baseDir) || !Directory.Exists(baseDir)) continue;
 
-                    // 1. Direkter Programmordner: baseDir\AppName
-                    foreach (var dir in Directory.GetDirectories(baseDir))
-                    {
-                        string dirName = Path.GetFileName(dir);
-                        if (dirName.Equals(appName, StringComparison.OrdinalIgnoreCase))
-                        {
-                            try
-                            {
-                                Directory.Delete(dir, true);
-                                log($"[Dateibereinigung] Ordner entfernt: {dirName}");
-                            }
-                            catch { }
-                        }
-                    }
+                // 1. Direkter Programmordner: baseDir\AppName
+                TryRemoveAppFolder(baseDir, name, mayDeleteNonEmpty, log);
 
-                    // 2. Hersteller-Unterordner: baseDir\Publisher\AppName
-                    if (!string.IsNullOrWhiteSpace(publisher) &&
-                        !publisher.Equals("Unbekannt", StringComparison.OrdinalIgnoreCase) &&
-                        !publisher.Equals("Microsoft", StringComparison.OrdinalIgnoreCase))
-                    {
-                        string pubDir = Path.Combine(baseDir, publisher);
-                        if (Directory.Exists(pubDir))
-                        {
-                            string subAppDir = Path.Combine(pubDir, appName);
-                            if (Directory.Exists(subAppDir))
-                            {
-                                try
-                                {
-                                    Directory.Delete(subAppDir, true);
-                                    log($"[Dateibereinigung] Hersteller-Ordner bereinigt: {publisher}\\{appName}");
-                                }
-                                catch { }
-                            }
+                // 2. Hersteller-Unterordner: baseDir\Publisher\AppName
+                if (!IsUsablePublisher(publisher)) continue;
 
-                            try
-                            {
-                                if (!Directory.EnumerateFileSystemEntries(pubDir).Any())
-                                {
-                                    Directory.Delete(pubDir, false);
-                                    log($"[Dateibereinigung] Leeren Hersteller-Ordner entfernt: {publisher}");
-                                }
-                            }
-                            catch { }
-                        }
-                    }
-                }
-                catch { }
+                string cleanPublisher = publisher.Trim();
+                if (ProtectedFolderNames.Contains(cleanPublisher)) continue;
+
+                string publisherDir = Path.Combine(baseDir, cleanPublisher);
+                if (!IsInsideDirectory(baseDir, publisherDir) || !Directory.Exists(publisherDir)) continue;
+
+                TryRemoveAppFolder(publisherDir, name, mayDeleteNonEmpty, log);
+                TryRemoveEmptyDirectory(publisherDir, cleanPublisher, log);
             }
         }
 
-        private void CleanLeftoverRegistry(SoftwareItem app, Action<string> log)
+        private static bool IsUsablePublisher(string publisher) =>
+            !string.IsNullOrWhiteSpace(publisher) &&
+            !publisher.Equals("Unbekannt", StringComparison.OrdinalIgnoreCase) &&
+            !publisher.Equals("Microsoft", StringComparison.OrdinalIgnoreCase) &&
+            !publisher.Equals("Microsoft Corporation", StringComparison.OrdinalIgnoreCase);
+
+        private static void TryRemoveAppFolder(string parentDir, string appName, bool mayDeleteNonEmpty, Action<string> log)
+        {
+            string target = Path.Combine(parentDir, appName);
+
+            // Sicherheitsnetz: Der Zielpfad muss wirklich UNTER dem Basisordner liegen
+            // (kein "..\" oder absolute Pfade aus dem Programmnamen).
+            if (!IsInsideDirectory(parentDir, target) || !Directory.Exists(target)) return;
+
+            if (!mayDeleteNonEmpty)
+            {
+                try
+                {
+                    if (Directory.EnumerateFileSystemEntries(target).Any())
+                    {
+                        log($"[Dateibereinigung] Benutzerdaten bleiben erhalten: {target}");
+                        return;
+                    }
+                }
+                catch
+                {
+                    return;
+                }
+            }
+
+            try
+            {
+                Directory.Delete(target, recursive: true);
+                log($"[Dateibereinigung] Ordner entfernt: {target}");
+            }
+            catch (Exception ex)
+            {
+                log($"[Dateibereinigung] Ordner konnte nicht entfernt werden ({ex.Message}): {target}");
+            }
+        }
+
+        private static void TryRemoveEmptyDirectory(string directory, string displayName, Action<string> log)
+        {
+            try
+            {
+                if (!Directory.EnumerateFileSystemEntries(directory).Any())
+                {
+                    Directory.Delete(directory, recursive: false);
+                    log($"[Dateibereinigung] Leeren Hersteller-Ordner entfernt: {displayName}");
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        /// <summary>Prüft, ob <paramref name="candidate"/> echt unterhalb von <paramref name="parentDir"/> liegt.</summary>
+        private static bool IsInsideDirectory(string parentDir, string candidate)
+        {
+            try
+            {
+                string parent = Path.GetFullPath(parentDir).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                                + Path.DirectorySeparatorChar;
+                string full = Path.GetFullPath(candidate);
+                return full.StartsWith(parent, StringComparison.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static void CleanLeftoverRegistry(SoftwareItem app, Action<string> log)
         {
             if (string.IsNullOrWhiteSpace(app.Name)) return;
-            var softwareRoots = new List<(RegistryKey Root, string Path)> {
+            string cleanName = app.Name.Trim();
+            if (cleanName.Length < 3 || ProtectedRegistryKeys.Contains(cleanName)) return;
+
+            var softwareRoots = new (RegistryKey Root, string Path)[]
+            {
                 (Registry.LocalMachine, @"SOFTWARE"),
                 (Registry.LocalMachine, @"SOFTWARE\Wow6432Node"),
                 (Registry.CurrentUser, @"SOFTWARE")
             };
+
             foreach (var root in softwareRoots)
             {
                 try
                 {
-                    using RegistryKey? key = root.Root.OpenSubKey(root.Path, true);
+                    using RegistryKey? key = root.Root.OpenSubKey(root.Path, writable: true);
                     if (key == null) continue;
                     foreach (string subkeyName in key.GetSubKeyNames())
                     {
-                        if (subkeyName.Equals(app.Name, StringComparison.OrdinalIgnoreCase))
+                        if (ProtectedRegistryKeys.Contains(subkeyName)) continue;
+
+                        if (subkeyName.Equals(cleanName, StringComparison.OrdinalIgnoreCase))
                         {
                             try
                             {
-                                key.DeleteSubKeyTree(subkeyName, false);
+                                key.DeleteSubKeyTree(subkeyName, throwOnMissingSubKey: false);
                                 log($"[Registrybereinigung] Schlüssel entfernt: {subkeyName}");
                             }
-                            catch { }
+                            catch
+                            {
+                            }
                         }
-                        else if (!string.IsNullOrWhiteSpace(app.Publisher) &&
-                                 !app.Publisher.Equals("Unbekannt", StringComparison.OrdinalIgnoreCase) &&
-                                 !app.Publisher.Equals("Microsoft", StringComparison.OrdinalIgnoreCase) &&
-                                 subkeyName.Equals(app.Publisher, StringComparison.OrdinalIgnoreCase))
+                        else if (IsUsablePublisher(app.Publisher) &&
+                                 subkeyName.Equals(app.Publisher.Trim(), StringComparison.OrdinalIgnoreCase))
                         {
-                            using RegistryKey? pubKey = key.OpenSubKey(subkeyName, true);
+                            using RegistryKey? pubKey = key.OpenSubKey(subkeyName, writable: true);
                             if (pubKey != null)
                             {
                                 foreach (string pubSubName in pubKey.GetSubKeyNames())
                                 {
-                                    if (pubSubName.Equals(app.Name, StringComparison.OrdinalIgnoreCase))
+                                    if (pubSubName.Equals(cleanName, StringComparison.OrdinalIgnoreCase))
                                     {
                                         try
                                         {
-                                            pubKey.DeleteSubKeyTree(pubSubName, false);
+                                            pubKey.DeleteSubKeyTree(pubSubName, throwOnMissingSubKey: false);
                                             log($"[Registrybereinigung] Schlüssel entfernt: {subkeyName}\\{pubSubName}");
                                         }
-                                        catch { }
+                                        catch
+                                        {
+                                        }
                                     }
                                 }
                             }
                         }
                     }
                 }
-                catch { }
+                catch
+                {
+                }
             }
         }
 
-        private void CleanShortcutsAndIconCache(SoftwareItem item, Action<string> log)
+        private static void CleanShortcutsAndIconCache(SoftwareItem item, Action<string> log)
         {
-            var searchPaths = new List<string> { @"C:\Users\Public\Desktop" };
-            try
+            if (string.IsNullOrWhiteSpace(item.Name)) return;
+            string targetName = item.Name.Trim();
+
+            var searchPaths = new List<string>
             {
-                searchPaths.Add(Environment.GetFolderPath(Environment.SpecialFolder.Desktop));
-                searchPaths.Add(Environment.GetFolderPath(Environment.SpecialFolder.Programs));
-            }
-            catch { }
-            foreach (var dir in searchPaths.Where(Directory.Exists).Distinct())
+                Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory),
+                Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms),
+                Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
+                Environment.GetFolderPath(Environment.SpecialFolder.Programs)
+            };
+
+            var enumOptions = new EnumerationOptions
+            {
+                IgnoreInaccessible = true,
+                RecurseSubdirectories = true
+            };
+
+            foreach (var dir in searchPaths.Where(p => !string.IsNullOrEmpty(p) && Directory.Exists(p)).Distinct(StringComparer.OrdinalIgnoreCase))
             {
                 try
                 {
-                    foreach (var file in Directory.GetFiles(dir, "*.*", SearchOption.AllDirectories))
+                    foreach (var file in Directory.EnumerateFiles(dir, "*", enumOptions))
                     {
-                        string ext = Path.GetExtension(file).ToLowerInvariant();
-                        if (ext == ".lnk" || ext == ".url")
+                        string ext = Path.GetExtension(file);
+                        if (ext.Equals(".lnk", StringComparison.OrdinalIgnoreCase) ||
+                            ext.Equals(".url", StringComparison.OrdinalIgnoreCase))
                         {
-                            if (Path.GetFileNameWithoutExtension(file).Equals(item.Name, StringComparison.OrdinalIgnoreCase))
+                            if (Path.GetFileNameWithoutExtension(file).Equals(targetName, StringComparison.OrdinalIgnoreCase))
                             {
                                 try
                                 {
                                     File.Delete(file);
                                     log($"[Shortcutbereinigung] Verknüpfung gelöscht: {Path.GetFileName(file)}");
                                 }
-                                catch { }
+                                catch
+                                {
+                                }
                             }
                         }
                     }
                 }
-                catch { }
+                catch
+                {
+                }
             }
         }
     }

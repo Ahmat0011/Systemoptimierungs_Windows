@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -19,11 +19,15 @@
     <Product>SystemOptimizer PRO</Product>
     <Description>Windows System-Optimierungs- und Wartungstool</Description>
     <Copyright>Copyright © 2026</Copyright>
+    <NeutralLanguage>de-DE</NeutralLanguage>
 
-    <!-- Single-File Publishing Support gegen Smart App Control DLL-Blockaden -->
-    <PublishSingleFile Condition="'$(Configuration)' == 'Release'">true</PublishSingleFile>
-    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
-    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <!-- Qualitätssicherung: empfohlene .NET-Analyzer, reproduzierbare Builds -->
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+
+    <!-- Release ohne separate PDB-Datei: kleinere Auslieferung, trotzdem vollständige Stacktraces -->
+    <DebugType Condition="'$(Configuration)' == 'Release'">embedded</DebugType>
   </PropertyGroup>
 
   <ItemGroup>
@@ -38,5 +42,10 @@
     <EmbeddedResource Remove="_archive_alte_dateien\**" />
     <Page Remove="_archive_alte_dateien\**" />
   </ItemGroup>
+
+  <!-- Vollautomatische Authenticode-Signierung nach jedem erfolgreichen Build -->
+  <Target Name="PostBuild" AfterTargets="PostBuildEvent">
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)scripts\sign-binaries.ps1&quot; &quot;$(TargetDir.TrimEnd('\'))&quot;" />
+  </Target>
 
 </Project>

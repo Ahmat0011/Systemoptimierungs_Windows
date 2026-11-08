@@ -13,16 +13,23 @@ namespace SystemOptimierer.Core
     internal sealed class ProcessJob : IDisposable
     {
         private const int JobObjectBasicAccountingInformation = 1;
+        private const int JobObjectExtendedLimitInformation = 9;
+        private const uint JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000;
 
         private readonly SafeJobHandle _handle;
+        private bool _disposed;
 
         private ProcessJob(SafeJobHandle handle) => _handle = handle;
 
         /// <summary>Erstellt ein Job-Objekt und nimmt den Prozess auf. Liefert null, wenn das nicht möglich ist.</summary>
         public static ProcessJob? TryAttach(Process process)
         {
+            if (process == null) return null;
+
             try
             {
+                if (process.HasExited) return null;
+
                 var handle = CreateJobObjectW(IntPtr.Zero, null);
                 if (handle.IsInvalid)
                 {
@@ -30,11 +37,26 @@ namespace SystemOptimierer.Core
                     return null;
                 }
 
+                // Stellt sicher, dass keine verwaisten Kindprozesse übrig bleiben, falls das Job-Handle geschlossen wird.
+                var extendedInfo = new JobObjectExtendedLimitInfo
+                {
+                    BasicLimitInformation = new JobObjectBasicLimitInfo
+                    {
+                        LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+                    }
+                };
+                SetInformationJobObject(
+                    handle,
+                    JobObjectExtendedLimitInformation,
+                    ref extendedInfo,
+                    (uint)Marshal.SizeOf<JobObjectExtendedLimitInfo>());
+
                 if (!AssignProcessToJobObject(handle, process.Handle))
                 {
                     handle.Dispose();
                     return null;
                 }
+
                 return new ProcessJob(handle);
             }
             catch
@@ -48,20 +70,43 @@ namespace SystemOptimierer.Core
         {
             get
             {
-                if (_handle.IsClosed) return 0;
-                return QueryInformationJobObject(_handle, JobObjectBasicAccountingInformation,
-                        out JobObjectBasicAccountingInfo info, (uint)Marshal.SizeOf<JobObjectBasicAccountingInfo>(), IntPtr.Zero)
-                    ? (int)info.ActiveProcesses
-                    : 0;
+                if (_disposed || _handle.IsClosed || _handle.IsInvalid) return 0;
+                try
+                {
+                    return QueryInformationJobObject(
+                            _handle,
+                            JobObjectBasicAccountingInformation,
+                            out JobObjectBasicAccountingInfo info,
+                            (uint)Marshal.SizeOf<JobObjectBasicAccountingInfo>(),
+                            IntPtr.Zero)
+                        ? (int)info.ActiveProcesses
+                        : 0;
+                }
+                catch (ObjectDisposedException)
+                {
+                    return 0;
+                }
             }
         }
 
         public void Terminate()
         {
-            try { if (!_handle.IsClosed) TerminateJobObject(_handle, 1); } catch { }
+            if (_disposed || _handle.IsClosed || _handle.IsInvalid) return;
+            try
+            {
+                TerminateJobObject(_handle, 1);
+            }
+            catch
+            {
+            }
         }
 
-        public void Dispose() => _handle.Dispose();
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _handle.Dispose();
+        }
 
         [StructLayout(LayoutKind.Sequential)]
         private struct JobObjectBasicAccountingInfo
@@ -74,6 +119,42 @@ namespace SystemOptimierer.Core
             public uint TotalProcesses;
             public uint ActiveProcesses;
             public uint TotalTerminatedProcesses;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct JobObjectBasicLimitInfo
+        {
+            public long PerProcessUserTimeLimit;
+            public long PerJobUserTimeLimit;
+            public uint LimitFlags;
+            public UIntPtr MinimumWorkingSetSize;
+            public UIntPtr MaximumWorkingSetSize;
+            public uint ActiveProcessLimit;
+            public UIntPtr Affinity;
+            public uint PriorityClass;
+            public uint SchedulingClass;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct IoCounters
+        {
+            public ulong ReadOperationCount;
+            public ulong WriteOperationCount;
+            public ulong OtherOperationCount;
+            public ulong ReadTransferCount;
+            public ulong WriteTransferCount;
+            public ulong OtherTransferCount;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct JobObjectExtendedLimitInfo
+        {
+            public JobObjectBasicLimitInfo BasicLimitInformation;
+            public IoCounters IoInfo;
+            public UIntPtr ProcessMemoryLimit;
+            public UIntPtr JobMemoryLimit;
+            public UIntPtr PeakProcessMemoryUsed;
+            public UIntPtr PeakJobMemoryUsed;
         }
 
         private sealed class SafeJobHandle : SafeHandleZeroOrMinusOneIsInvalid
@@ -91,8 +172,20 @@ namespace SystemOptimierer.Core
 
         [DllImport("kernel32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern bool QueryInformationJobObject(SafeJobHandle hJob, int jobObjectInfoClass,
-            out JobObjectBasicAccountingInfo lpJobObjectInfo, uint cbJobObjectInfoLength, IntPtr lpReturnLength);
+        private static extern bool QueryInformationJobObject(
+            SafeJobHandle hJob,
+            int jobObjectInfoClass,
+            out JobObjectBasicAccountingInfo lpJobObjectInfo,
+            uint cbJobObjectInfoLength,
+            IntPtr lpReturnLength);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool SetInformationJobObject(
+            SafeJobHandle hJob,
+            int jobObjectInfoClass,
+            ref JobObjectExtendedLimitInfo lpJobObjectInfo,
+            uint cbJobObjectInfoLength);
 
         [DllImport("kernel32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]

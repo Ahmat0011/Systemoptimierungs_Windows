@@ -9,7 +9,7 @@ namespace SystemOptimierer.Services
 {
     public interface IPerformanceService
     {
-        Task BoostRamAsync(Action<string> log, IProgress<ProgressInfo>? progress, CancellationToken cancellationToken);
+        Task BoostRamAsync(Action<string> log, IProgress<ProgressInfo>? progress, CancellationToken ct);
         List<StartupItem> GetStartupItems();
         Task ToggleStartupItemAsync(StartupItem item);
     }

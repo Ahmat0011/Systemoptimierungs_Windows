@@ -24,6 +24,18 @@ namespace SystemOptimierer.Services
             Encoding? outputEncoding = null);
 
         /// <summary>
+        /// Führt einen Befehl aus und übergibt Eingabedaten über StandardInput (keine temporären Dateien auf Festplatte nötig).
+        /// </summary>
+        Task<int> RunCommandWithInputAsync(
+            string command,
+            string arguments,
+            string standardInput,
+            Action<string> onOutput,
+            Action<string> onError,
+            CancellationToken cancellationToken,
+            Encoding? outputEncoding = null);
+
+        /// <summary>
         /// Startet einen Befehl (z. B. einen Deinstaller) und wartet, bis er UND alle von ihm
         /// gestarteten Kindprozesse beendet sind. Viele Deinstaller starten sich selbst neu und
         /// beenden den ursprünglichen Prozess sofort – ohne diese Wartelogik gälte die

@@ -1,5 +1,7 @@
 using System;
+using System.Threading;
 using System.Threading.Tasks;
+using System.Windows;
 using System.Windows.Input;
 
 namespace SystemOptimierer.Core
@@ -9,15 +11,15 @@ namespace SystemOptimierer.Core
     /// Vorteile gegenüber RelayCommand mit async-Lambda:
     ///  - Kein unkontrolliertes "async void": Exceptions werden abgefangen
     ///    und an <c>onException</c> weitergereicht statt die App zu beenden.
-    ///  - Reentrancy-Schutz: solange die Operation läuft, ist CanExecute false,
-    ///    Doppelklicks starten den Vorgang also nicht zweimal.
+    ///  - Atomarer Reentrancy-Schutz: solange die Operation läuft, ist CanExecute false,
+    ///    Doppelklicks starten den Vorgang also garantiert nicht zweimal.
     /// </summary>
     public class AsyncRelayCommand : ICommand
     {
         private readonly Func<object?, Task> _execute;
         private readonly Predicate<object?>? _canExecute;
         private readonly Action<Exception>? _onException;
-        private bool _isExecuting;
+        private int _isExecuting;
 
         public AsyncRelayCommand(
             Func<object?, Task> execute,
@@ -29,18 +31,35 @@ namespace SystemOptimierer.Core
             _onException = onException;
         }
 
+        public AsyncRelayCommand(
+            Func<Task> execute,
+            Func<bool>? canExecute = null,
+            Action<Exception>? onException = null)
+        {
+            ArgumentNullException.ThrowIfNull(execute);
+            _execute = _ => execute();
+            _canExecute = canExecute != null ? _ => canExecute() : null;
+            _onException = onException;
+        }
+
+        public bool IsExecuting => Volatile.Read(ref _isExecuting) != 0;
+
         public bool CanExecute(object? parameter)
-            => !_isExecuting && (_canExecute == null || _canExecute(parameter));
+            => !IsExecuting && (_canExecute == null || _canExecute(parameter));
 
         public async void Execute(object? parameter)
         {
-            if (!CanExecute(parameter)) return;
+            if (!_canExecute?.Invoke(parameter) ?? false) return;
+            if (Interlocked.CompareExchange(ref _isExecuting, 1, 0) != 0) return;
 
-            _isExecuting = true;
-            CommandManager.InvalidateRequerySuggested();
+            RaiseCanExecuteChanged();
             try
             {
                 await _execute(parameter);
+            }
+            catch (OperationCanceledException)
+            {
+                // Geplanter Abbruch durch CancellationToken – kein Fehler.
             }
             catch (Exception ex)
             {
@@ -48,7 +67,20 @@ namespace SystemOptimierer.Core
             }
             finally
             {
-                _isExecuting = false;
+                Interlocked.Exchange(ref _isExecuting, 0);
+                RaiseCanExecuteChanged();
+            }
+        }
+
+        public static void RaiseCanExecuteChanged()
+        {
+            var dispatcher = Application.Current?.Dispatcher;
+            if (dispatcher != null && !dispatcher.CheckAccess())
+            {
+                dispatcher.BeginInvoke(CommandManager.InvalidateRequerySuggested);
+            }
+            else
+            {
                 CommandManager.InvalidateRequerySuggested();
             }
         }

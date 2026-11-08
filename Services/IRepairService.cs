@@ -7,6 +7,6 @@ namespace SystemOptimierer.Services
 {
     public interface IRepairService
     {
-        Task RepairSystemAsync(Action<string> onLog, IProgress<ProgressInfo>? progress, CancellationToken cancellationToken);
+        Task RepairSystemAsync(Action<string> log, IProgress<ProgressInfo>? progress, CancellationToken ct);
     }
 }

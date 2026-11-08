@@ -22,7 +22,7 @@ using SystemOptimierer.Services;
 
 namespace SystemOptimierer.ViewModels
 {
-    public class MainViewModel : INotifyPropertyChanged
+    public class MainViewModel : INotifyPropertyChanged, IDisposable
     {
         private readonly IUpdateService _updateService;
         private readonly IDriverService _driverService;
@@ -45,6 +45,15 @@ namespace SystemOptimierer.ViewModels
         private DateTime _lastActivationRefreshUtc = DateTime.MinValue;
         private const int MaxLiveLogEntries = 10;
 
+        // Die Suche wird entprellt: Bei jedem Tastendruck über 10.000+ Einträge zu filtern ruckelt sonst.
+        private const int SearchDebounceMs = 180;
+        private readonly DispatcherTimer _searchDebounceTimer;
+
+        // Während einer Massenauswahl ("Alle auswählen") wird die teure Statusauswertung nur EINMAL ausgeführt.
+        private int _selectionBatchDepth;
+        private bool _selectionChangedInBatch;
+        private bool _disposed;
+
         public ICollectionView SoftwareView { get; }
         public ICollectionView UwpView { get; }
 
@@ -58,14 +67,14 @@ namespace SystemOptimierer.ViewModels
             IPerformanceService performanceService,
             IInstalledAppsWatcher appsWatcher)
         {
-            _updateService = updateService;
-            _driverService = driverService;
-            _repairService = repairService;
-            _cleanupService = cleanupService;
-            _uninstallerService = uninstallerService;
-            _storageService = storageService;
-            _performanceService = performanceService;
-            _appsWatcher = appsWatcher;
+            _updateService = updateService ?? throw new ArgumentNullException(nameof(updateService));
+            _driverService = driverService ?? throw new ArgumentNullException(nameof(driverService));
+            _repairService = repairService ?? throw new ArgumentNullException(nameof(repairService));
+            _cleanupService = cleanupService ?? throw new ArgumentNullException(nameof(cleanupService));
+            _uninstallerService = uninstallerService ?? throw new ArgumentNullException(nameof(uninstallerService));
+            _storageService = storageService ?? throw new ArgumentNullException(nameof(storageService));
+            _performanceService = performanceService ?? throw new ArgumentNullException(nameof(performanceService));
+            _appsWatcher = appsWatcher ?? throw new ArgumentNullException(nameof(appsWatcher));
 
             SoftwareView = CollectionViewSource.GetDefaultView(_installedSoftware);
             SoftwareView.Filter = FilterSoftwarePredicate;
@@ -76,6 +85,17 @@ namespace SystemOptimierer.ViewModels
             // Sortierung von Anfang an setzen, damit live hinzugefügte Programme direkt richtig einsortiert werden
             ApplySoftwareSorting();
             ApplyUwpSorting();
+
+            _searchDebounceTimer = new DispatcherTimer(DispatcherPriority.Background)
+            {
+                Interval = TimeSpan.FromMilliseconds(SearchDebounceMs)
+            };
+            _searchDebounceTimer.Tick += (_, _) =>
+            {
+                _searchDebounceTimer.Stop();
+                SoftwareView.Refresh();
+                UwpView.Refresh();
+            };
 
             _desktopAppsRefresh = new CoalescingRefresh(LoadDesktopAppsCoreAsync);
             _storeAppsRefresh = new CoalescingRefresh(LoadStoreAppsCoreAsync);
@@ -113,15 +133,14 @@ namespace SystemOptimierer.ViewModels
                 _ => ExecuteWithBusyStateAsync("Netzwerk optimieren", ct => _cleanupService.OptimizeNetworkAsync(Log, ct), false),
                 _ => !IsBusy, OnCommandException);
 
-            // Bereich "Deinstallieren" – Aktualisieren ist nur lesend und daher auch während anderer Vorgänge erlaubt
+            // Bereich "Deinstallieren"
             RefreshAppsCommand = new AsyncRelayCommand(
                 _ => LoadAppsAsync(_lifetimeCts.Token),
                 null, OnCommandException);
 
-            // Multi-Select – Button aktiv wenn mindestens 1 Programm angekreuzt oder markiert ist
             UninstallCommand = new AsyncRelayCommand(
-                _ => ExecuteWithBusyStateAsync("Deinstallation", ct => UninstallSelectedAppsAsync(ct), false),
-                _ => !IsBusy && (_installedSoftware.Any(a => a.IsSelected) || _installedUwpApps.Any(a => a.IsSelected) || SelectedSoftware != null || SelectedUwpApp != null), OnCommandException);
+                param => ExecuteWithBusyStateAsync("Deinstallation", ct => UninstallSelectedAppsAsync(param as string, ct), false),
+                param => !IsBusy && HasSelectedApps(param as string), OnCommandException);
 
             // System-Leistung
             BoostRamCommand = new AsyncRelayCommand(
@@ -154,7 +173,6 @@ namespace SystemOptimierer.ViewModels
         {
             try
             {
-                // Überwachung zuerst starten, damit während des ersten Scans keine Änderung verloren geht
                 _appsWatcher.Start();
                 await RefreshStorageInfoAsync();
                 await Task.Delay(300);
@@ -172,6 +190,8 @@ namespace SystemOptimierer.ViewModels
 
         public void RequestShutdown()
         {
+            try { _searchDebounceTimer.Stop(); } catch { }
+
             try
             {
                 if (_cts != null && !_cts.IsCancellationRequested)
@@ -183,13 +203,24 @@ namespace SystemOptimierer.ViewModels
             try { _appsWatcher.Dispose(); } catch { }
         }
 
-        /// <summary>
-        /// Sicherheitsnetz zusätzlich zur Registry-Überwachung: Kehrt der Nutzer z. B. aus einem
-        /// Setup-Fenster zurück, wird die Liste abgeglichen (Store-Scan nur bei tatsächlichen Änderungen).
-        /// </summary>
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+
+            RequestShutdown();
+
+            try { _cts?.Dispose(); } catch { }
+            try { _lifetimeCts.Dispose(); } catch { }
+            try { _desktopAppsRefresh.Dispose(); } catch { }
+            try { _storeAppsRefresh.Dispose(); } catch { }
+
+            GC.SuppressFinalize(this);
+        }
+
         public void OnWindowActivated()
         {
-            if (!_storeAppsLoaded) return;
+            if (_disposed || !_storeAppsLoaded) return;
             var now = DateTime.UtcNow;
             if (now - _lastActivationRefreshUtc < TimeSpan.FromSeconds(3)) return;
             _lastActivationRefreshUtc = now;
@@ -239,7 +270,17 @@ namespace SystemOptimierer.ViewModels
         public bool IsBusy
         {
             get => _isBusy;
-            set { if (_isBusy != value) { _isBusy = value; OnPropertyChanged(); OnPropertyChanged(nameof(IsNotBusy)); OnPropertyChanged(nameof(IsStatusBarIndeterminate)); CommandManager.InvalidateRequerySuggested(); } }
+            set
+            {
+                if (_isBusy != value)
+                {
+                    _isBusy = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(IsNotBusy));
+                    OnPropertyChanged(nameof(IsStatusBarIndeterminate));
+                    CommandManager.InvalidateRequerySuggested();
+                }
+            }
         }
         public bool IsNotBusy => !_isBusy;
 
@@ -258,11 +299,36 @@ namespace SystemOptimierer.ViewModels
         private readonly ObservableCollection<SoftwareItem> _installedUwpApps = new();
         public ObservableCollection<SoftwareItem> InstalledUwpApps => _installedUwpApps;
 
-        private string _searchText = string.Empty;
-        public string SearchText
+        private string _softwareSearchText = string.Empty;
+        public string SoftwareSearchText
         {
-            get => _searchText;
-            set { if (_searchText != value) { _searchText = value; OnPropertyChanged(); SoftwareView.Refresh(); UwpView.Refresh(); } }
+            get => _softwareSearchText;
+            set
+            {
+                if (_softwareSearchText == value) return;
+                _softwareSearchText = value;
+                OnPropertyChanged();
+                ScheduleViewRefresh();
+            }
+        }
+
+        private string _uwpSearchText = string.Empty;
+        public string UwpSearchText
+        {
+            get => _uwpSearchText;
+            set
+            {
+                if (_uwpSearchText == value) return;
+                _uwpSearchText = value;
+                OnPropertyChanged();
+                ScheduleViewRefresh();
+            }
+        }
+
+        private void ScheduleViewRefresh()
+        {
+            _searchDebounceTimer.Stop();
+            _searchDebounceTimer.Start();
         }
 
         private bool _cleanLeftovers = true;
@@ -324,7 +390,15 @@ namespace SystemOptimierer.ViewModels
         public string StartupSearchText
         {
             get => _startupSearchText;
-            set { if (_startupSearchText != value) { _startupSearchText = value; OnPropertyChanged(); OnPropertyChanged(nameof(FilteredStartupItems)); } }
+            set
+            {
+                if (_startupSearchText != value)
+                {
+                    _startupSearchText = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(FilteredStartupItems));
+                }
+            }
         }
 
         public IEnumerable<StartupItem> FilteredStartupItems
@@ -333,8 +407,8 @@ namespace SystemOptimierer.ViewModels
             {
                 if (string.IsNullOrWhiteSpace(StartupSearchText)) return _startupItems;
                 return _startupItems.Where(item =>
-                    item.Name.Contains(StartupSearchText, StringComparison.OrdinalIgnoreCase) ||
-                    item.Path.Contains(StartupSearchText, StringComparison.OrdinalIgnoreCase));
+                    (item.Name?.Contains(StartupSearchText, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                    (item.Path?.Contains(StartupSearchText, StringComparison.OrdinalIgnoreCase) ?? false));
             }
         }
 
@@ -347,14 +421,12 @@ namespace SystemOptimierer.ViewModels
         private int _driversFoundCount;
         public int DriversFoundCount { get => _driversFoundCount; set { if (_driversFoundCount != value) { _driversFoundCount = value; OnPropertyChanged(); } } }
 
-        public ObservableCollection<UpdateItem> UpdatesCollection { get; } = new ObservableCollection<UpdateItem>();
+        public ObservableCollection<UpdateItem> UpdatesCollection { get; } = new();
 
         #endregion
 
         #region Fortschrittsanzeige
 
-        // Wird nur sichtbar, wenn ein Vorgang echten Fortschritt meldet (Bereinigung, Reparatur,
-        // Treiber, Updates, RAM). Schnelle Vorgänge wie die Deinstallation zeigen keinen Balken.
         private bool _isProgressVisible;
         public bool IsProgressVisible
         {
@@ -385,7 +457,6 @@ namespace SystemOptimierer.ViewModels
         private string _progressDetail = string.Empty;
         public string ProgressDetail { get => _progressDetail; private set { if (_progressDetail != value) { _progressDetail = value; OnPropertyChanged(); } } }
 
-        /// <summary>Die schmale Statusleiste animiert nur, solange kein messbarer Fortschritt vorliegt.</summary>
         public bool IsStatusBarIndeterminate => IsBusy && (!IsProgressVisible || IsProgressIndeterminate);
 
         private int _progressSession;
@@ -409,8 +480,8 @@ namespace SystemOptimierer.ViewModels
 
             IsProgressVisible = true;
             IsProgressIndeterminate = info.IsIndeterminate;
-            // Der Balken läuft nur vorwärts (manche Tools setzen ihre Prozentanzeige zwischendurch zurück)
-            ProgressValue = Math.Max(ProgressValue, Math.Clamp(info.Percent, 0, 100));
+            double safePercent = double.IsFinite(info.Percent) ? Math.Clamp(info.Percent, 0, 100) : 0;
+            ProgressValue = Math.Max(ProgressValue, safePercent);
             ProgressPercentText = $"{Math.Floor(ProgressValue):0} %";
             ProgressStep = info.Step;
             if (info.Detail != null) ProgressDetail = info.Detail;
@@ -441,7 +512,7 @@ namespace SystemOptimierer.ViewModels
 
         #endregion
 
-        #region Dispatcher-Helfer (null-safe, kein Crash beim Beenden)
+        #region Dispatcher-Helfer
 
         private static void InvokeOnUi(Action action)
         {
@@ -473,9 +544,24 @@ namespace SystemOptimierer.ViewModels
 
         public void UpdateSelectedSoftwareStatus()
         {
-            var selectedClassic = _installedSoftware.Where(a => a.IsSelected).ToList();
-            var selectedUwp = _installedUwpApps.Where(a => a.IsSelected).ToList();
-            int count = selectedClassic.Count + selectedUwp.Count;
+            int classicCount = 0, uwpCount = 0;
+            SoftwareItem? firstSelected = null;
+
+            foreach (var app in _installedSoftware)
+            {
+                if (!app.IsSelected) continue;
+                classicCount++;
+                firstSelected ??= app;
+            }
+
+            foreach (var app in _installedUwpApps)
+            {
+                if (!app.IsSelected) continue;
+                uwpCount++;
+                firstSelected ??= app;
+            }
+
+            int count = classicCount + uwpCount;
 
             if (count == 0)
             {
@@ -494,8 +580,7 @@ namespace SystemOptimierer.ViewModels
             }
             else if (count == 1)
             {
-                var single = selectedClassic.FirstOrDefault() ?? selectedUwp.FirstOrDefault();
-                SelectedSoftwareStatusText = $"1 Programm ausgewählt: {single?.Name}";
+                SelectedSoftwareStatusText = $"1 Programm ausgewählt: {firstSelected?.Name}";
             }
             else
             {
@@ -505,20 +590,54 @@ namespace SystemOptimierer.ViewModels
             CommandManager.InvalidateRequerySuggested();
         }
 
+        public void SetSelectionForVisibleSoftware(bool selected) => RunSelectionBatch(() =>
+        {
+            foreach (var item in SoftwareView)
+            {
+                if (item is SoftwareItem app) app.IsSelected = selected;
+            }
+        });
+
+        public void SetSelectionForVisibleUwp(bool selected) => RunSelectionBatch(() =>
+        {
+            foreach (var item in UwpView)
+            {
+                if (item is SoftwareItem app) app.IsSelected = selected;
+            }
+        });
+
+        private void RunSelectionBatch(Action action)
+        {
+            _selectionBatchDepth++;
+            try
+            {
+                action();
+            }
+            finally
+            {
+                _selectionBatchDepth--;
+                if (_selectionBatchDepth == 0 && _selectionChangedInBatch)
+                {
+                    _selectionChangedInBatch = false;
+                    UpdateSelectedSoftwareStatus();
+                }
+            }
+        }
+
         private bool FilterSoftwarePredicate(object obj)
         {
             if (obj is not SoftwareItem app) return false;
-            if (string.IsNullOrWhiteSpace(SearchText)) return true;
-            return app.Name.Contains(SearchText, StringComparison.OrdinalIgnoreCase) ||
-                   app.Publisher.Contains(SearchText, StringComparison.OrdinalIgnoreCase);
+            if (string.IsNullOrWhiteSpace(SoftwareSearchText)) return true;
+            return app.Name.Contains(SoftwareSearchText, StringComparison.OrdinalIgnoreCase) ||
+                   app.Publisher.Contains(SoftwareSearchText, StringComparison.OrdinalIgnoreCase);
         }
 
         private bool FilterUwpAppsPredicate(object obj)
         {
             if (obj is not SoftwareItem app) return false;
-            if (string.IsNullOrWhiteSpace(SearchText)) return true;
-            return app.Name.Contains(SearchText, StringComparison.OrdinalIgnoreCase) ||
-                   app.Publisher.Contains(SearchText, StringComparison.OrdinalIgnoreCase);
+            if (string.IsNullOrWhiteSpace(UwpSearchText)) return true;
+            return app.Name.Contains(UwpSearchText, StringComparison.OrdinalIgnoreCase) ||
+                   app.Publisher.Contains(UwpSearchText, StringComparison.OrdinalIgnoreCase);
         }
 
         private void ApplySoftwareSorting()
@@ -534,10 +653,6 @@ namespace SystemOptimierer.ViewModels
         }
 
         private const int MaxLogLength = 60_000;
-
-        // Log-Zeilen werden gesammelt und gebündelt (mit niedriger Priorität) in die Oberfläche übernommen.
-        // Vorher wurde für JEDE Zeile der komplette Log-Text (bis 60.000 Zeichen) neu zusammengesetzt und
-        // neu gezeichnet – bei DISM, winget oder sfc mit hunderten Zeilen hat das die Oberfläche ausgebremst.
         private readonly ConcurrentQueue<string> _pendingLog = new();
         private int _logFlushScheduled;
 
@@ -570,13 +685,38 @@ namespace SystemOptimierer.ViewModels
                 int startSearch = Math.Max(0, combined.Length - (MaxLogLength / 2));
                 int cutAt = combined.IndexOf('\n', startSearch);
                 combined = cutAt > 0
-                    ? "[... ältere Einträge wurden gekürzt ...]\n" + combined.Substring(cutAt + 1)
+                    ? string.Concat("[... ältere Einträge wurden gekürzt ...]\n", combined.AsSpan(cutAt + 1))
                     : combined.Substring(combined.Length - (MaxLogLength / 2));
             }
             LogText = combined;
         }
 
+        private static readonly object InternetCheckGate = new();
+        private static DateTime _internetCheckedUtc = DateTime.MinValue;
+        private static bool _internetAvailable;
+
         private static async Task<bool> IsInternetAvailableAsync()
+        {
+            TimeSpan maxAge = _internetAvailable
+                ? TimeSpan.FromSeconds(60)
+                : TimeSpan.FromSeconds(10);
+
+            lock (InternetCheckGate)
+            {
+                if (DateTime.UtcNow - _internetCheckedUtc < maxAge) return _internetAvailable;
+            }
+
+            bool available = await ProbeInternetAsync();
+
+            lock (InternetCheckGate)
+            {
+                _internetAvailable = available;
+                _internetCheckedUtc = DateTime.UtcNow;
+            }
+            return available;
+        }
+
+        private static async Task<bool> ProbeInternetAsync()
         {
             try
             {
@@ -627,7 +767,6 @@ namespace SystemOptimierer.ViewModels
             _cts = new CancellationTokenSource();
             var token = _cts.Token;
 
-            // Progress<T> meldet automatisch auf dem UI-Thread (hier erzeugt)
             int session = _progressSession + 1;
             ResetProgress(session);
             var progress = new Progress<ProgressInfo>(info => ApplyProgress(session, info));
@@ -635,8 +774,6 @@ namespace SystemOptimierer.ViewModels
             {
                 await Task.Run(() => action(token, progress), CancellationToken.None);
 
-                // Die Dienste werfen bei Abbruch meist keine Exception, sondern beenden sich still.
-                // Ohne diese Prüfung stand nach "Abbrechen" fälschlich "erfolgreich abgeschlossen" da.
                 if (token.IsCancellationRequested)
                 {
                     Log($"\n--- VORGANG ABGEBROCHEN: {operationName} ---");
@@ -683,10 +820,6 @@ namespace SystemOptimierer.ViewModels
 
         private Task RefreshDesktopAppsAsync() => _desktopAppsRefresh.RunAsync(_lifetimeCts.Token);
 
-        /// <summary>
-        /// Aktualisiert die Store-Apps. Ohne <paramref name="force"/> wird der teure PowerShell-Scan
-        /// nur ausgeführt, wenn sich die registrierten Pakete tatsächlich geändert haben.
-        /// </summary>
         private Task RefreshStoreAppsAsync(bool force)
         {
             if (!force && _storeAppsLoaded && _uninstallerService.GetStoreAppsFingerprint() == _storeAppsFingerprint)
@@ -708,12 +841,15 @@ namespace SystemOptimierer.ViewModels
         {
             var apps = await Task.Run(() => _uninstallerService.GetInstalledSoftware(), ct);
             ct.ThrowIfCancellationRequested();
-            await InvokeOnUiAsync(() => ApplyAppList(_installedSoftware, apps));
+
+            await InvokeOnUiAsync(() =>
+            {
+                ApplyAppList(_installedSoftware, apps);
+            });
         }
 
         private async Task LoadStoreAppsCoreAsync(CancellationToken ct)
         {
-            // Fingerabdruck VOR dem Scan lesen: Ändert sich währenddessen etwas, folgt automatisch ein weiterer Scan.
             int fingerprint = _uninstallerService.GetStoreAppsFingerprint();
             var apps = await _uninstallerService.GetInstalledUwpAppsAsync(
                 msg => { if (msg.Contains("[FEHLER]", StringComparison.Ordinal)) Log(msg); }, ct);
@@ -721,7 +857,6 @@ namespace SystemOptimierer.ViewModels
 
             bool applied = await InvokeOnUiAsync(() =>
             {
-                // Ein leeres Ergebnis bei bisher gefüllter Liste deutet auf einen fehlgeschlagenen Scan hin.
                 if (apps.Count == 0 && _installedUwpApps.Count > 0) return false;
                 ApplyAppList(_installedUwpApps, apps);
                 return true;
@@ -738,9 +873,8 @@ namespace SystemOptimierer.ViewModels
         }
 
         /// <summary>
-        /// Gleicht eine angezeigte Liste mit einem frischen Scan ab, statt sie neu aufzubauen:
-        /// Häkchen, markierte Zeile und Scrollposition bleiben erhalten, neue Programme erscheinen
-        /// sofort an der richtigen Sortierposition, entfernte verschwinden. Nur auf dem UI-Thread aufrufen.
+        /// Gleicht eine angezeigte Liste mit einem frischen Scan ab:
+        /// Neue Programme erscheinen sofort in der DataGrid-Ansicht, entfernte verschwinden.
         /// </summary>
         private void ApplyAppList(ObservableCollection<SoftwareItem> target, IReadOnlyList<SoftwareItem> fresh)
         {
@@ -782,9 +916,6 @@ namespace SystemOptimierer.ViewModels
             if (!isInitialLoad) LogLiveChanges(added, removed, changed);
         }
 
-        /// <summary>
-        /// Entfernt (replacement == null) oder ersetzt ein Listenelement und überträgt Häkchen und Zeilenauswahl.
-        /// </summary>
         private void ReplaceOrRemoveAppAt(ObservableCollection<SoftwareItem> target, int index, SoftwareItem? replacement)
         {
             var existing = target[index];
@@ -809,7 +940,6 @@ namespace SystemOptimierer.ViewModels
 
         private void LogLiveChanges(List<string> added, List<string> removed, List<string> changed)
         {
-            // Gleicher Name entfernt + hinzugefügt = Update (z. B. neue Paketversion einer Store-App)
             var updated = added.Intersect(removed, StringComparer.OrdinalIgnoreCase).Concat(changed)
                 .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
@@ -823,11 +953,15 @@ namespace SystemOptimierer.ViewModels
 
         private void OnSoftwareItemPropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
-            if (e.PropertyName == nameof(SoftwareItem.IsSelected))
+            if (e.PropertyName != nameof(SoftwareItem.IsSelected)) return;
+
+            if (_selectionBatchDepth > 0)
             {
-                UpdateSelectedSoftwareStatus();
-                CommandManager.InvalidateRequerySuggested();
+                _selectionChangedInBatch = true;
+                return;
             }
+
+            UpdateSelectedSoftwareStatus();
         }
 
         private async Task LoadStartupItemsAsync(CancellationToken ct)
@@ -843,15 +977,42 @@ namespace SystemOptimierer.ViewModels
             });
         }
 
-        private async Task UninstallSelectedAppsAsync(CancellationToken ct)
+        private static bool IsUwpScope(string? scope)
+            => string.Equals(scope, "uwp", StringComparison.OrdinalIgnoreCase);
+
+        private bool HasSelectedApps(string? scope)
         {
-            // Auswahl auf dem UI-Thread erfassen – die Listen können sich durch Live-Aktualisierungen jederzeit ändern.
+            if (scope == null)
+            {
+                return _installedSoftware.Any(a => a.IsSelected)
+                    || _installedUwpApps.Any(a => a.IsSelected)
+                    || SelectedSoftware != null
+                    || SelectedUwpApp != null;
+            }
+
+            return IsUwpScope(scope)
+                ? _installedUwpApps.Any(a => a.IsSelected) || SelectedUwpApp != null
+                : _installedSoftware.Any(a => a.IsSelected) || SelectedSoftware != null;
+        }
+
+        private async Task UninstallSelectedAppsAsync(string? scope, CancellationToken ct)
+        {
+            bool uwpScope = IsUwpScope(scope);
+
             var allSelected = await InvokeOnUiAsync(() =>
             {
-                var list = _installedSoftware.Where(a => a.IsSelected)
-                    .Concat(_installedUwpApps.Where(a => a.IsSelected))
-                    .ToList();
-                if (list.Count == 0 && (SelectedSoftware ?? SelectedUwpApp) is { } single) list.Add(single);
+                IEnumerable<SoftwareItem> source = scope == null
+                    ? _installedSoftware.Concat(_installedUwpApps)
+                    : uwpScope ? _installedUwpApps : _installedSoftware;
+
+                var list = source.Where(a => a.IsSelected).ToList();
+                if (list.Count == 0)
+                {
+                    SoftwareItem? single = scope == null
+                        ? SelectedSoftware ?? SelectedUwpApp
+                        : uwpScope ? SelectedUwpApp : SelectedSoftware;
+                    if (single != null) list.Add(single);
+                }
                 return list;
             }, new List<SoftwareItem>());
 
@@ -890,9 +1051,6 @@ namespace SystemOptimierer.ViewModels
                 if (removed) successCount++;
                 else failCount++;
 
-                // Sofortiges Feedback: Nur nachweislich entfernte Programme verschwinden aus der Liste.
-                // Das Listenelement kann inzwischen durch eine Live-Aktualisierung ersetzt worden sein,
-                // deshalb über die Kennung statt über die Referenz suchen.
                 await InvokeOnUiAsync(() =>
                 {
                     var target = app.IsUwp ? _installedUwpApps : _installedSoftware;
@@ -908,7 +1066,6 @@ namespace SystemOptimierer.ViewModels
 
             Log($"\n=== Deinstallations-Durchgang beendet: {successCount} erfolgreich, {failCount} fehlgeschlagen ===\n");
 
-            // Abschließender Abgleich mit dem tatsächlichen Systemzustand (z. B. mitentfernte Komponenten)
             await Task.WhenAll(RefreshDesktopAppsAsync(), RefreshStoreAppsAsync(force: false));
 
             await InvokeOnUiAsync(() =>
@@ -928,9 +1085,10 @@ namespace SystemOptimierer.ViewModels
         {
             try
             {
-                var spaceC = await Task.Run(() => _storageService.GetDriveSpaceString("C"));
-                var spaceD = await Task.Run(() => _storageService.GetDriveSpaceString("D"));
-                await InvokeOnUiAsync(() => { DriveCSpace = spaceC; DriveDSpace = spaceD; });
+                var taskC = Task.Run(() => _storageService.GetDriveSpaceString("C"));
+                var taskD = Task.Run(() => _storageService.GetDriveSpaceString("D"));
+                await Task.WhenAll(taskC, taskD);
+                await InvokeOnUiAsync(() => { DriveCSpace = taskC.Result; DriveDSpace = taskD.Result; });
             }
             catch { }
         }
@@ -960,43 +1118,56 @@ namespace SystemOptimierer.ViewModels
         private void ParseWingetInstallLine(string line)
         {
             if (string.IsNullOrWhiteSpace(line)) return;
+
+            string lowerLine = line.ToLowerInvariant();
+            string? status;
+            string? detail;
+
+            if (lowerLine.Contains("successfully") || lowerLine.Contains("erfolgreich") ||
+                lowerLine.Contains("installed") || lowerLine.Contains("installiert"))
+            {
+                status = "Erfolgreich";
+                detail = null;
+            }
+            else if (lowerLine.Contains("failed") || lowerLine.Contains("fehler") || lowerLine.Contains("fehlgeschlagen"))
+            {
+                status = "Fehlgeschlagen";
+                detail = "Installation fehlgeschlagen";
+            }
+            else if (lowerLine.Contains("download") || lowerLine.Contains("herunterladen"))
+            {
+                status = "Herunterladen...";
+                detail = "Download läuft...";
+            }
+            else if (lowerLine.Contains("hash") || lowerLine.Contains("überprüf"))
+            {
+                status = "Prüfe Integrität...";
+                detail = "Hash wird geprüft...";
+            }
+            else
+            {
+                status = "Wird installiert...";
+                detail = "Installationsroutine aktiv...";
+            }
+
             InvokeOnUi(() =>
             {
-                string lowerLine = line.ToLowerInvariant();
-                foreach (var item in UpdatesCollection.Where(x => x.Type == "Software-Update").ToList())
+                foreach (var item in UpdatesCollection)
                 {
-                    if (lowerLine.Contains(item.UpdateId.ToLowerInvariant()) || lowerLine.Contains(item.Name.ToLowerInvariant()))
-                    {
-                        if (lowerLine.Contains("successfully") || lowerLine.Contains("erfolgreich") || lowerLine.Contains("installed") || lowerLine.Contains("installiert"))
-                        {
-                            item.Status = "Erfolgreich";
-                            item.Detail = $"v{item.AvailableVersion} installiert";
-                        }
-                        else if (lowerLine.Contains("failed") || lowerLine.Contains("fehler") || lowerLine.Contains("fehlgeschlagen"))
-                        {
-                            item.Status = "Fehlgeschlagen";
-                            item.Detail = "Installation fehlgeschlagen";
-                        }
-                        else if (lowerLine.Contains("download") || lowerLine.Contains("herunterladen"))
-                        {
-                            item.Status = "Herunterladen...";
-                            item.Detail = "Download läuft...";
-                        }
-                        else if (lowerLine.Contains("hash") || lowerLine.Contains("überprüf"))
-                        {
-                            item.Status = "Prüfe Integrität...";
-                            item.Detail = "Hash wird geprüft...";
-                        }
-                        else
-                        {
-                            item.Status = "Wird installiert...";
-                            item.Detail = "Installationsroutine aktiv...";
-                        }
-                    }
+                    if (item.Type != "Software-Update") continue;
+                    if (!IsMentioned(line, item.UpdateId) && !IsMentioned(line, item.Name)) continue;
+
+                    item.Status = status;
+                    item.Detail = detail ?? (string.IsNullOrEmpty(item.AvailableVersion)
+                        ? "Aktualisiert"
+                        : $"v{item.AvailableVersion} installiert");
                 }
                 UpdatesFoundCount = UpdatesCollection.Count(x => x.Type == "Software-Update" && x.Status != "Erfolgreich");
             });
         }
+
+        private static bool IsMentioned(string line, string value)
+            => !string.IsNullOrEmpty(value) && line.Contains(value, StringComparison.OrdinalIgnoreCase);
 
         private void ParseDriverLine(string line)
         {
@@ -1063,7 +1234,9 @@ namespace SystemOptimierer.ViewModels
 
         private async Task InstallUpdatesWrapperAsync(CancellationToken ct, IProgress<ProgressInfo> progress)
         {
-            var softwareUpdates = UpdatesCollection.Where(x => x.Type == "Software-Update").ToList();
+            var softwareUpdates = await InvokeOnUiAsync(
+                () => UpdatesCollection.Where(x => x.Type == "Software-Update").ToList(),
+                new List<UpdateItem>());
 
             if (softwareUpdates.Count > 0)
             {
@@ -1093,7 +1266,6 @@ namespace SystemOptimierer.ViewModels
 
                     Action<string> onProgressLog = line =>
                     {
-                        // winget-Fortschrittsbalken -> Fortschrittsanzeige statt Log
                         if (ConsoleProgressParser.TryParse(line, out double? fraction, out string? barDetail))
                         {
                             string detail = barDetail ?? (fraction.HasValue ? $"Download: {fraction.Value:P0}" : "Download läuft...");
@@ -1114,7 +1286,7 @@ namespace SystemOptimierer.ViewModels
                             steps.Report(0.8, "Wird installiert...");
                         InvokeOnUi(() =>
                         {
-                            if (lower.Contains("download") || lower.Contains("herunterladen") || lower.Contains(" mb ") || lower.Contains("%"))
+                            if (lower.Contains("download") || lower.Contains("herunterladen") || lower.Contains(" mb ") || lower.Contains('%'))
                             {
                                 item.Status = "Herunterladen...";
                                 var match = Regex.Match(line, @"(\d+\s*(?:MB|KB|GB|%)\s*(?:/\s*\d+\s*(?:MB|KB|GB))?|\d+%)", RegexOptions.IgnoreCase);
@@ -1141,7 +1313,7 @@ namespace SystemOptimierer.ViewModels
                     if (ct.IsCancellationRequested) break;
                     steps.Report(1, "Fertig");
 
-                    bool isSuccess = (exitCode == 0 || exitCode == 1641 || exitCode == 3010);
+                    bool isSuccess = exitCode == 0 || exitCode == 1641 || exitCode == 3010;
                     if (isSuccess)
                     {
                         successCount++;
@@ -1179,7 +1351,6 @@ namespace SystemOptimierer.ViewModels
                 await InvokeOnUiAsync(() => { CurrentUpdateActivity = "Starte Deep-Install aller Pakete..."; });
                 await _updateService.InstallUpdatesAsync(msg =>
                 {
-                    // Fortschrittsbalken von winget nicht ins Log schreiben
                     if (ConsoleProgressParser.TryParse(msg, out _, out _)) return;
                     Log(msg);
                     ParseWingetInstallLine(msg);
@@ -1252,7 +1423,6 @@ namespace SystemOptimierer.ViewModels
 
             await InvokeOnUiAsync(() =>
             {
-                // Treiber ohne Rückmeldung (z. B. nicht mehr angeboten) nicht fälschlich als erfolgreich anzeigen
                 foreach (var item in UpdatesCollection.Where(x => x.Type == "Treiber-Update" && x.Status == "Wird installiert..."))
                 {
                     item.Status = "Ausstehend";
@@ -1276,10 +1446,6 @@ namespace SystemOptimierer.ViewModels
             });
         }
 
-        /// <summary>
-        /// Wertet die Ergebniszeilen des Treiber-Skripts aus:
-        /// "[ERFOLG] Treiber installiert: &lt;Titel&gt;" bzw. "[FEHLER] Treiber nicht installiert (&lt;Grund&gt;): &lt;Titel&gt;".
-        /// </summary>
         private void ApplyDriverInstallResult(string line)
         {
             const string successPrefix = "[ERFOLG] Treiber installiert: ";
@@ -1363,13 +1529,7 @@ namespace SystemOptimierer.ViewModels
             => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 
-    /// <summary>
-    /// Custom-Sortierer für SoftwareItem.
-    /// Setzt Einträge OHNE Datum (InstallDateTime == null) IMMER ans Ende,
-    /// unabhängig von Sortierrichtung. So zeigt "Neueste zuerst" wirklich die
-    /// neuesten Programme oben – nicht mehr "Unbekannt" ganz oben.
-    /// </summary>
-    internal class SoftwareItemComparer : IComparer
+    internal sealed class SoftwareItemComparer : IComparer
     {
         private readonly string _mode;
 

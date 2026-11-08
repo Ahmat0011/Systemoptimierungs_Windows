@@ -7,8 +7,8 @@ namespace SystemOptimierer.Services
 {
     public interface IUpdateService
     {
-        Task CheckUpdatesAsync(Action<string> onLog, IProgress<ProgressInfo>? progress, CancellationToken cancellationToken);
-        Task<int> InstallSingleUpdateAsync(string updateId, Action<string> onLog, CancellationToken cancellationToken);
-        Task InstallUpdatesAsync(Action<string> onLog, IProgress<ProgressInfo>? progress, CancellationToken cancellationToken);
+        Task CheckUpdatesAsync(Action<string> log, IProgress<ProgressInfo>? progress, CancellationToken ct);
+        Task<int> InstallSingleUpdateAsync(string updateId, Action<string> log, CancellationToken ct);
+        Task InstallUpdatesAsync(Action<string> log, IProgress<ProgressInfo>? progress, CancellationToken ct);
     }
 }

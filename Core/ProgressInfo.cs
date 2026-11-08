@@ -1,5 +1,4 @@
 using System;
-using System.Linq;
 
 namespace SystemOptimierer.Core
 {
@@ -20,16 +19,34 @@ namespace SystemOptimierer.Core
     {
         private readonly IProgress<ProgressInfo>? _progress;
         private readonly double[] _weights;
+        // Laufende Summe der Gewichte VOR jedem Schritt: vermeidet eine LINQ-Summe pro Fortschrittsmeldung
+        // (bei DISM/winget kommen hunderte Meldungen pro Vorgang).
+        private readonly double[] _weightPrefix;
         private readonly double _totalWeight;
         private int _index;
         private string _title = string.Empty;
 
         public StepProgress(IProgress<ProgressInfo>? progress, params double[] weights)
         {
-            if (weights.Length == 0) throw new ArgumentException("Mindestens ein Schritt erforderlich.", nameof(weights));
+            if (weights == null || weights.Length == 0)
+                throw new ArgumentException("Mindestens ein Schritt erforderlich.", nameof(weights));
+
             _progress = progress;
-            _weights = weights;
-            _totalWeight = weights.Sum();
+            _weights = new double[weights.Length];
+            _weightPrefix = new double[weights.Length];
+
+            double sum = 0;
+            for (int i = 0; i < weights.Length; i++)
+            {
+                double cleanWeight = double.IsFinite(weights[i]) ? Math.Max(0, weights[i]) : 0;
+                _weights[i] = cleanWeight;
+                _weightPrefix[i] = sum;
+                sum += cleanWeight;
+            }
+
+            _totalWeight = sum;
+            if (_totalWeight <= 0)
+                throw new ArgumentException("Die Summe der Schritt-Gewichte muss größer als 0 sein.", nameof(weights));
         }
 
         public int StepCount => _weights.Length;
@@ -38,7 +55,7 @@ namespace SystemOptimierer.Core
         public void Begin(int index, string title, string? detail = null)
         {
             _index = Math.Clamp(index, 0, _weights.Length - 1);
-            _title = title;
+            _title = title ?? string.Empty;
             Report(0, detail);
         }
 
@@ -50,8 +67,15 @@ namespace SystemOptimierer.Core
         public void ReportIndeterminate(string? detail = null)
             => _progress?.Report(new ProgressInfo(OverallPercent(0), StepText, detail, IsIndeterminate: true));
 
+        /// <summary>Schließt den gesamten Fortschritt sauber bei 100 % ab.</summary>
+        public void Complete(string? detail = null)
+            => _progress?.Report(new ProgressInfo(100.0, StepText, detail));
+
         private double OverallPercent(double fraction)
-            => (_weights.Take(_index).Sum() + _weights[_index] * Math.Clamp(fraction, 0, 1)) / _totalWeight * 100;
+        {
+            double safeFraction = double.IsFinite(fraction) ? Math.Clamp(fraction, 0.0, 1.0) : 0.0;
+            return (_weightPrefix[_index] + _weights[_index] * safeFraction) / _totalWeight * 100.0;
+        }
 
         private string StepText => _weights.Length > 1
             ? $"Schritt {_index + 1} von {_weights.Length}: {_title}"

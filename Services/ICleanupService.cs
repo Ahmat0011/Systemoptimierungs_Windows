@@ -7,7 +7,7 @@ namespace SystemOptimierer.Services
 {
     public interface ICleanupService
     {
-        Task CleanupSystemAsync(Action<string> onLog, IProgress<ProgressInfo>? progress, CancellationToken cancellationToken);
-        Task OptimizeNetworkAsync(Action<string> onLog, CancellationToken cancellationToken);
+        Task CleanupSystemAsync(Action<string> log, IProgress<ProgressInfo>? progress, CancellationToken ct);
+        Task OptimizeNetworkAsync(Action<string> log, CancellationToken ct);
     }
 }

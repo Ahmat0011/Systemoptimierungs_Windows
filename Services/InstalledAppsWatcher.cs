@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Microsoft.Win32;
@@ -26,7 +25,7 @@ namespace SystemOptimierer.Services
         private Thread? _thread;
         private Timer? _desktopTimer;
         private Timer? _storeTimer;
-        private bool _disposed;
+        private int _disposed;
 
         public event EventHandler? DesktopAppsChanged;
         public event EventHandler? StoreAppsChanged;
@@ -35,21 +34,31 @@ namespace SystemOptimierer.Services
         {
             lock (_sync)
             {
-                if (_disposed || _thread != null) return;
+                if (Volatile.Read(ref _disposed) != 0 || _thread != null) return;
 
-                _desktopTimer = new Timer(_ => Raise(DesktopAppsChanged));
-                _storeTimer = new Timer(_ => Raise(StoreAppsChanged));
+                _desktopTimer = new Timer(_ => Raise(DesktopAppsChanged), null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+                _storeTimer = new Timer(_ => Raise(StoreAppsChanged), null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
 
                 // Eigener Thread: bei asynchronem RegNotifyChangeKeyValue muss der registrierende Thread weiterleben.
-                _thread = new Thread(WatchLoop) { IsBackground = true, Name = "InstalledAppsWatcher" };
+                _thread = new Thread(WatchLoop)
+                {
+                    IsBackground = true,
+                    Name = "InstalledAppsWatcher"
+                };
                 _thread.Start();
             }
         }
 
         private void Raise(EventHandler? handler)
         {
-            if (_disposed) return;
-            try { handler?.Invoke(this, EventArgs.Empty); } catch { }
+            if (Volatile.Read(ref _disposed) != 0) return;
+            try
+            {
+                handler?.Invoke(this, EventArgs.Empty);
+            }
+            catch
+            {
+            }
         }
 
         private sealed class WatchedKey : IDisposable
@@ -60,13 +69,22 @@ namespace SystemOptimierer.Services
             public required bool IsStore { get; init; }
             public AutoResetEvent Signal { get; } = new(false);
 
-            public bool Arm() =>
-                RegNotifyChangeKeyValue(Key.Handle, WatchSubtree, Filter, Signal.SafeWaitHandle, true) == 0;
+            public bool Arm()
+            {
+                try
+                {
+                    return RegNotifyChangeKeyValue(Key.Handle, WatchSubtree, Filter, Signal.SafeWaitHandle, true) == 0;
+                }
+                catch (ObjectDisposedException)
+                {
+                    return false;
+                }
+            }
 
             public void Dispose()
             {
-                Key.Dispose();
-                Signal.Dispose();
+                try { Key.Dispose(); } catch { }
+                try { Signal.Dispose(); } catch { }
             }
         }
 
@@ -81,33 +99,57 @@ namespace SystemOptimierer.Services
                     w.Dispose();
                     return true;
                 });
+
                 if (watched.Count == 0) return;
 
-                var handles = watched.Select(w => (WaitHandle)w.Signal).Append(_stopSignal).ToArray();
-                while (true)
+                // _stopSignal auf Index 0: WaitHandle.WaitAny gibt bei gleichzeitig signalisierten
+                // Handles immer den niedrigsten Index zurück -> Stop hat sofort Vorrang.
+                var handles = new WaitHandle[watched.Count + 1];
+                handles[0] = _stopSignal;
+                for (int i = 0; i < watched.Count; i++)
+                {
+                    handles[i + 1] = watched[i].Signal;
+                }
+
+                while (Volatile.Read(ref _disposed) == 0)
                 {
                     int index = WaitHandle.WaitAny(handles);
-                    if (index < 0 || index >= watched.Count) break; // Stop-Signal
+                    if (index <= 0 || index > watched.Count || Volatile.Read(ref _disposed) != 0)
+                        break; // Stop-Signal oder Timeout/Abbruch
 
-                    var fired = watched[index];
+                    var fired = watched[index - 1];
                     // Zuerst neu registrieren, damit keine direkt folgende Änderung verloren geht.
                     // Schlägt das fehl (z. B. Schlüssel gelöscht), bleibt dieser Schlüssel einfach stumm.
                     fired.Arm();
 
-                    if (fired.IsStore) _storeTimer?.Change(StoreDebounce, Timeout.InfiniteTimeSpan);
-                    else _desktopTimer?.Change(DesktopDebounce, Timeout.InfiniteTimeSpan);
+                    try
+                    {
+                        if (fired.IsStore)
+                            _storeTimer?.Change(StoreDebounce, Timeout.InfiniteTimeSpan);
+                        else
+                            _desktopTimer?.Change(DesktopDebounce, Timeout.InfiniteTimeSpan);
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                        break;
+                    }
                 }
             }
-            catch (ObjectDisposedException) { }
+            catch (ObjectDisposedException)
+            {
+            }
             finally
             {
-                foreach (var w in watched) w.Dispose();
+                foreach (var w in watched)
+                {
+                    w.Dispose();
+                }
             }
         }
 
         private static List<WatchedKey> OpenWatchedKeys()
         {
-            var result = new List<WatchedKey>();
+            var result = new List<WatchedKey>(5);
             const uint desktopFilter = RegNotifyChangeName | RegNotifyChangeLastSet;
 
             // Desktop-Programme: gesamter Unterbaum (neue/gelöschte Einträge und geänderte Werte wie DisplayVersion)
@@ -123,35 +165,59 @@ namespace SystemOptimierer.Services
             return result;
         }
 
-        private static void TryAdd(List<WatchedKey> list, RegistryHive hive, RegistryView view, string path,
-            bool watchSubtree, uint filter, bool isStore)
+        private static void TryAdd(
+            List<WatchedKey> list,
+            RegistryHive hive,
+            RegistryView view,
+            string path,
+            bool watchSubtree,
+            uint filter,
+            bool isStore)
         {
             try
             {
                 using var baseKey = RegistryKey.OpenBaseKey(hive, view);
                 var key = baseKey.OpenSubKey(path, writable: false);
                 if (key == null) return;
-                list.Add(new WatchedKey { Key = key, WatchSubtree = watchSubtree, Filter = filter, IsStore = isStore });
+                list.Add(new WatchedKey
+                {
+                    Key = key,
+                    WatchSubtree = watchSubtree,
+                    Filter = filter,
+                    IsStore = isStore
+                });
             }
-            catch { }
+            catch
+            {
+            }
         }
 
         public void Dispose()
         {
             Thread? thread;
+            Timer? desktopTimer;
+            Timer? storeTimer;
+
             lock (_sync)
             {
-                if (_disposed) return;
-                _disposed = true;
+                if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
                 thread = _thread;
+                desktopTimer = _desktopTimer;
+                storeTimer = _storeTimer;
+                _thread = null;
+                _desktopTimer = null;
+                _storeTimer = null;
             }
 
             try { _stopSignal.Set(); } catch { }
             bool stopped = thread == null || thread.Join(TimeSpan.FromSeconds(2));
 
-            _desktopTimer?.Dispose();
-            _storeTimer?.Dispose();
-            if (stopped) _stopSignal.Dispose();
+            try { desktopTimer?.Dispose(); } catch { }
+            try { storeTimer?.Dispose(); } catch { }
+            if (stopped)
+            {
+                try { _stopSignal.Dispose(); } catch { }
+            }
         }
 
         [DllImport("advapi32.dll")]

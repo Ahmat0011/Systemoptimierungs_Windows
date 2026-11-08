@@ -7,7 +7,7 @@ namespace SystemOptimierer.Services
 {
     public interface IDriverService
     {
-        Task CheckDriversAsync(Action<string> onLog, IProgress<ProgressInfo>? progress, CancellationToken cancellationToken);
-        Task InstallDriversAsync(Action<string> onLog, IProgress<ProgressInfo>? progress, CancellationToken cancellationToken);
+        Task CheckDriversAsync(Action<string> log, IProgress<ProgressInfo>? progress, CancellationToken ct);
+        Task InstallDriversAsync(Action<string> log, IProgress<ProgressInfo>? progress, CancellationToken ct);
     }
 }

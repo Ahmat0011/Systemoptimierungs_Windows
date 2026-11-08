@@ -14,6 +14,7 @@ namespace SystemOptimierer.Services
     public class PerformanceService : IPerformanceService
     {
         [DllImport("psapi.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool EmptyWorkingSet(IntPtr hProcess);
 
         [DllImport("kernel32.dll", SetLastError = true)]
@@ -45,11 +46,21 @@ namespace SystemOptimierer.Services
         private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
 
         // ============================================================
-        // FIX #5: Systemprozesse ausschließen (PID 0 = Idle, PID 4 = System)
-        // Diese können nicht optimiert werden und verursachen nur Fehler.
-        // Die eigene App wird ebenfalls ausgelassen (sie würde sofort wieder eingelagert).
+        // Systemprozesse & Sicherheitssoftware ausschließen:
+        // 1. PID 0 (Idle), PID 4 (System) und die eigene App.
+        // 2. Kritische Windows-Dienste (lsass, csrss, dwm, audiodg -> Schutz vor Manipulation/Rucklern).
+        // 3. Antivirus-Prozesse (Bitdefender, Windows Defender etc.) -> Deren Self-Defense
+        //    wertet OpenProcess-Aufrufe sonst als Manipulationsversuch.
         // ============================================================
         private static readonly HashSet<int> ExcludedPids = new() { 0, 4, Environment.ProcessId };
+
+        private static readonly HashSet<string> ExcludedProcessNames = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "SystemOptimierer", "System", "Idle", "Registry", "Memory Compression",
+            "csrss", "lsass", "smss", "services", "wininit", "winlogon", "fontdrvhost", "dwminit", "dwm", "audiodg",
+            "bdservicehost", "bdagent", "bdntwrk", "bdredline", "bduserhost", "bdvpnservice", "bdvpnapp",
+            "MsMpEng", "NisSrv", "MpDefenderCoreService", "SecurityHealthService", "smartscreen", "SenseCncProxy", "SenseIR"
+        };
 
         // ============================================================
         // Autostart-Orte. "Run32" = 32-Bit-Programme auf 64-Bit-Windows (WOW6432Node) –
@@ -74,84 +85,113 @@ namespace SystemOptimierer.Services
 
         public async Task BoostRamAsync(Action<string> log, IProgress<ProgressInfo>? progress, CancellationToken ct)
         {
+            ArgumentNullException.ThrowIfNull(log);
+
             log("--- SYSTEM ARBEITSSPEICHER (RAM) OPTIMIERUNG GESTARTET ---");
             log("Scanne aktive Prozesse und minimiere ungenutzte Working-Sets...");
 
             var memoryBefore = GetMemoryStatus();
-            long initialMem = 0;
-            long finalMem = 0;
+            var workingSetBefore = new Dictionary<int, long>();
             int successCount = 0;
             int failCount = 0;
             int skippedCount = 0;
 
             var steps = new StepProgress(progress, 1);
             steps.Begin(0, "Arbeitsspeicher optimieren", "Prozesse werden ermittelt...");
-            var processes = Process.GetProcesses();
-            for (int i = 0; i < processes.Length; i++)
+
+            // Prozess-Iteration auf Hintergrund-Thread ausführen, damit die UI nicht blockiert
+            await Task.Run(() =>
             {
-                var proc = processes[i];
-                if (ct.IsCancellationRequested) break;
-                if (i % 10 == 0) steps.Report(i / (double)processes.Length * 0.9, $"Prozess {i + 1} von {processes.Length}");
-
-                try
+                var processes = Process.GetProcesses();
+                for (int i = 0; i < processes.Length; i++)
                 {
-                    // System Idle (PID 0), System (PID 4) und die eigene App auslassen
-                    if (ExcludedPids.Contains(proc.Id))
+                    var proc = processes[i];
+                    try
                     {
-                        skippedCount++;
-                        continue;
-                    }
+                        if (ct.IsCancellationRequested) continue;
 
-                    initialMem += proc.WorkingSet64;
+                        if (i % 10 == 0 && processes.Length > 0)
+                        {
+                            steps.Report(i / (double)processes.Length * 0.9, $"Prozess {i + 1} von {processes.Length}");
+                        }
 
-                    IntPtr hProcess = OpenProcess(
-                        PROCESS_SET_QUOTA | PROCESS_QUERY_LIMITED_INFORMATION, false, proc.Id);
+                        // System- und Sicherheits-Prozesse (z. B. Bitdefender) strikt meiden
+                        if (ExcludedPids.Contains(proc.Id) || ExcludedProcessNames.Contains(proc.ProcessName))
+                        {
+                            skippedCount++;
+                            continue;
+                        }
 
-                    if (hProcess != IntPtr.Zero)
-                    {
-                        if (EmptyWorkingSet(hProcess))
-                            successCount++;
+                        long workingSet = proc.WorkingSet64;
+                        if (workingSet > 0) workingSetBefore[proc.Id] = workingSet;
+
+                        IntPtr hProcess = OpenProcess(
+                            PROCESS_SET_QUOTA | PROCESS_QUERY_LIMITED_INFORMATION, false, proc.Id);
+
+                        if (hProcess != IntPtr.Zero)
+                        {
+                            try
+                            {
+                                if (EmptyWorkingSet(hProcess))
+                                    successCount++;
+                                else
+                                    failCount++;
+                            }
+                            finally
+                            {
+                                CloseHandle(hProcess);
+                            }
+                        }
                         else
+                        {
                             failCount++;
-                        CloseHandle(hProcess);
+                        }
                     }
-                    else
+                    catch
                     {
                         failCount++;
                     }
+                    finally
+                    {
+                        proc.Dispose();
+                    }
                 }
-                catch
-                {
-                    failCount++;
-                }
-                finally
-                {
-                    proc.Dispose();
-                }
-            }
+            }, ct);
+
+            if (ct.IsCancellationRequested) return;
 
             steps.Report(0.95, "Speichermanager wird aktualisiert...");
             log("Speichermanager wird aktualisiert...");
             await Task.Delay(500, ct);
 
-            foreach (var proc in Process.GetProcesses())
+            long finalMem = await Task.Run(() =>
             {
-                try
+                long sum = 0;
+                foreach (var proc in Process.GetProcesses())
                 {
-                    if (!ExcludedPids.Contains(proc.Id))
-                        finalMem += proc.WorkingSet64;
+                    try
+                    {
+                        if (!ExcludedPids.Contains(proc.Id) && workingSetBefore.ContainsKey(proc.Id))
+                            sum += proc.WorkingSet64;
+                    }
+                    catch
+                    {
+                    }
+                    finally
+                    {
+                        proc.Dispose();
+                    }
                 }
-                catch { }
-                finally
-                {
-                    proc.Dispose();
-                }
-            }
+                return sum;
+            }, ct);
+
+            long initialMem = 0;
+            foreach (long value in workingSetBefore.Values) initialMem += value;
 
             double freedMb = Math.Max(0, initialMem - finalMem) / (1024.0 * 1024.0);
             var memoryAfter = GetMemoryStatus();
 
-            steps.Report(1, "Optimierung abgeschlossen");
+            steps.Complete("Optimierung abgeschlossen");
             log("[Ergebnis] RAM-Optimierung abgeschlossen.");
             log($"[Status] {successCount} Prozesse optimiert, {failCount} übersprungen (geschützt), {skippedCount} Prozesse ausgelassen.");
             log($"[Speicher] Working-Sets um ca. {freedMb:F1} MB verkleinert.");
@@ -179,11 +219,16 @@ namespace SystemOptimierer.Services
         public List<StartupItem> GetStartupItems()
         {
             var items = new List<StartupItem>();
+            var seenInLocation = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
             foreach (var location in StartupLocations)
             {
+                seenInLocation.Clear();
+
                 // Aktive Einträge (können aber per Task-Manager deaktiviert sein)
                 foreach (var (name, value) in ReadValues(location.Root, location.RunPath))
                 {
+                    seenInLocation.Add(name);
                     bool disabledByWindows = IsDisabledInStartupApproved(location, name);
                     items.Add(new StartupItem
                     {
@@ -195,9 +240,12 @@ namespace SystemOptimierer.Services
                     });
                 }
 
-                // Von dieser App deaktivierte Einträge (Sicherung)
+                // Von dieser App deaktivierte Einträge (Sicherung) – nur aufnehmen,
+                // wenn sich das Programm nicht inzwischen selbst wieder in "Run" eingetragen hat.
                 foreach (var (name, value) in ReadValues(location.Root, location.BackupPath))
                 {
+                    if (!seenInLocation.Add(name)) continue;
+
                     items.Add(new StartupItem
                     {
                         Name = name,
@@ -207,11 +255,14 @@ namespace SystemOptimierer.Services
                     });
                 }
             }
+
             return items.OrderBy(i => i.Name, StringComparer.OrdinalIgnoreCase).ToList();
         }
 
         public async Task ToggleStartupItemAsync(StartupItem item)
         {
+            ArgumentNullException.ThrowIfNull(item);
+
             await Task.Run(() =>
             {
                 var location = StartupLocations.FirstOrDefault(l => l.Label == item.RegistryKeyPath)
@@ -221,7 +272,7 @@ namespace SystemOptimierer.Services
                 {
                     if (item.IsDisabledByWindows)
                     {
-                        // Wurde per Task-Manager deaktiviert: nur die Sperre entfernen
+                        // Wurde per Task-Manager deaktiviert: Sperre in StartupApproved entfernen
                         ClearStartupApproved(location, item.Name);
                         item.IsDisabledByWindows = false;
                         item.IsEnabled = true;
@@ -231,8 +282,8 @@ namespace SystemOptimierer.Services
                     string sourcePath = item.IsEnabled ? location.RunPath : location.BackupPath;
                     string targetPath = item.IsEnabled ? location.BackupPath : location.RunPath;
 
-                    using var srcKey = location.Root.OpenSubKey(sourcePath, true);
-                    using var dstKey = location.Root.CreateSubKey(targetPath, true);
+                    using var srcKey = location.Root.OpenSubKey(sourcePath, writable: true);
+                    using var dstKey = location.Root.CreateSubKey(targetPath, writable: true);
 
                     if (srcKey == null || dstKey == null)
                         throw new UnauthorizedAccessException("Registry-Zugriff verweigert (Schreibrechte erforderlich).");
@@ -241,36 +292,43 @@ namespace SystemOptimierer.Services
                         ?? throw new InvalidOperationException("Der Registry-Wert konnte nicht gelesen werden.");
 
                     dstKey.SetValue(item.Name, value, srcKey.GetValueKind(item.Name));
-                    srcKey.DeleteValue(item.Name, false);
+                    srcKey.DeleteValue(item.Name, throwOnMissingValue: false);
 
                     // Beim Aktivieren eine eventuelle Task-Manager-Sperre mit entfernen,
                     // sonst stünde der Eintrag zwar wieder in "Run", würde aber nicht starten.
-                    if (!item.IsEnabled) ClearStartupApproved(location, item.Name);
+                    if (!item.IsEnabled)
+                    {
+                        ClearStartupApproved(location, item.Name);
+                    }
 
                     item.IsEnabled = !item.IsEnabled;
+                    item.IsDisabledByWindows = false;
                 }
-                catch (Exception ex)
+                catch (Exception ex) when (ex is not InvalidOperationException)
                 {
-                    throw new InvalidOperationException($"Fehler beim Ändern des Autostarts für '{item.Name}': {ex.Message}");
+                    throw new InvalidOperationException($"Fehler beim Ändern des Autostarts für '{item.Name}': {ex.Message}", ex);
                 }
             });
         }
 
-        private static IEnumerable<(string Name, string Value)> ReadValues(RegistryKey root, string path)
+        private static List<(string Name, string Value)> ReadValues(RegistryKey root, string path)
         {
             var result = new List<(string, string)>();
             try
             {
-                using var key = root.OpenSubKey(path);
+                using var key = root.OpenSubKey(path, writable: false);
                 if (key == null) return result;
 
                 foreach (string valueName in key.GetValueNames())
                 {
                     if (string.IsNullOrEmpty(valueName)) continue; // "(Standard)" ist kein Autostart
-                    result.Add((valueName, key.GetValue(valueName)?.ToString() ?? string.Empty));
+                    string value = key.GetValue(valueName, string.Empty, RegistryValueOptions.DoNotExpandEnvironmentNames)?.ToString() ?? string.Empty;
+                    result.Add((valueName, value));
                 }
             }
-            catch { }
+            catch
+            {
+            }
             return result;
         }
 
@@ -281,7 +339,7 @@ namespace SystemOptimierer.Services
         {
             try
             {
-                using var key = location.Root.OpenSubKey(location.ApprovedPath);
+                using var key = location.Root.OpenSubKey(location.ApprovedPath, writable: false);
                 return key?.GetValue(name) is byte[] data && data.Length > 0 && (data[0] & 0x01) == 0x01;
             }
             catch
@@ -292,8 +350,8 @@ namespace SystemOptimierer.Services
 
         private static void ClearStartupApproved(StartupLocation location, string name)
         {
-            using var key = location.Root.OpenSubKey(location.ApprovedPath, true);
-            key?.DeleteValue(name, false);
+            using var key = location.Root.OpenSubKey(location.ApprovedPath, writable: true);
+            key?.DeleteValue(name, throwOnMissingValue: false);
         }
     }
 }

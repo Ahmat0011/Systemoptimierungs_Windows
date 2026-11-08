@@ -14,20 +14,26 @@ namespace SystemOptimierer.Core
             _canExecute = canExecute;
         }
 
-        public bool CanExecute(object? parameter)
+        public RelayCommand(Action execute, Func<bool>? canExecute = null)
         {
-            return _canExecute == null || _canExecute(parameter);
+            ArgumentNullException.ThrowIfNull(execute);
+            _execute = _ => execute();
+            _canExecute = canExecute != null ? _ => canExecute() : null;
         }
 
+        public bool CanExecute(object? parameter)
+            => _canExecute == null || _canExecute(parameter);
+
         public void Execute(object? parameter)
-        {
-            _execute(parameter);
-        }
+            => _execute(parameter);
+
+        public static void RaiseCanExecuteChanged()
+            => CommandManager.InvalidateRequerySuggested();
 
         public event EventHandler? CanExecuteChanged
         {
-            add { CommandManager.RequerySuggested += value; }
-            remove { CommandManager.RequerySuggested -= value; }
+            add => CommandManager.RequerySuggested += value;
+            remove => CommandManager.RequerySuggested -= value;
         }
     }
 }

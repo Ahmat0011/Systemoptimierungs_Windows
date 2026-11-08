@@ -7,22 +7,27 @@ namespace SystemOptimierer.Services
     {
         public string GetDriveSpaceString(string driveLetter)
         {
+            if (string.IsNullOrWhiteSpace(driveLetter))
+                return "Unbekannt: Nicht verfügbar";
+
+            string cleanLetter = char.ToUpperInvariant(driveLetter.Trim()[0]).ToString();
+
             try
             {
-                var drive = new DriveInfo(driveLetter);
+                var drive = new DriveInfo(cleanLetter);
                 if (!drive.IsReady)
                 {
-                    return $"{driveLetter.ToUpper()}: Nicht bereit";
+                    return $"{cleanLetter}: Nicht bereit";
                 }
-                
+
                 double freeGb = drive.AvailableFreeSpace / (1024.0 * 1024.0 * 1024.0);
                 double totalGb = drive.TotalSize / (1024.0 * 1024.0 * 1024.0);
-                
-                return $"{driveLetter.ToUpper()}: {freeGb:F0} GB frei von {totalGb:F0} GB";
+
+                return $"{cleanLetter}: {freeGb:F0} GB frei von {totalGb:F0} GB";
             }
             catch
             {
-                return $"{driveLetter.ToUpper()}: Nicht verfügbar";
+                return $"{cleanLetter}: Nicht verfügbar";
             }
         }
     }

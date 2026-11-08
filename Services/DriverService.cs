@@ -29,8 +29,13 @@ function Report-Progress([int]$step, [double]$fraction, [string]$detail) {
 ";
 
         private const string SearchScriptPrefix = @"
-Report-Progress 0 0 'Windows-Update-Dienst wird gestartet...'
+Report-Progress 0 0 'Windows-Update-Dienst wird vorbereitet...'
 Write-Host 'Stelle sicher, dass der Windows Update Dienst (wuauserv) läuft...'
+$wuauserv = Get-Service -Name wuauserv -ErrorAction SilentlyContinue
+if ($null -ne $wuauserv -and $wuauserv.StartType -eq 'Disabled') {
+    Write-Host '[HINWEIS] Windows Update Dienst war deaktiviert und wird für die Treibersuche auf Manuell gesetzt...'
+    Set-Service -Name wuauserv -StartupType Manual -ErrorAction SilentlyContinue
+}
 Start-Service wuauserv -ErrorAction SilentlyContinue
 $session  = New-Object -ComObject Microsoft.Update.Session
 $session.ClientApplicationID = 'SystemOptimierer'
@@ -52,14 +57,17 @@ $optional  = @($result.Updates | Where-Object { $_.BrowseOnly })
 
         public DriverService(IPowerShellService powerShellService)
         {
-            _ps = powerShellService;
+            _ps = powerShellService ?? throw new ArgumentNullException(nameof(powerShellService));
         }
 
         public async Task CheckDriversAsync(Action<string> log, IProgress<ProgressInfo>? progress, CancellationToken ct)
         {
+            ArgumentNullException.ThrowIfNull(log);
+
             log("--- DEEP-SCAN: SUCHE NACH OFFIZIELLEN TREIBER-UPDATES ---");
 
             string script = ScriptHelpers + @"
+$session = $null
 try {
 " + SearchScriptPrefix + @"
     Report-Progress 2 0.5 'Gefundene Treiber werden ausgewertet...'
@@ -87,15 +95,23 @@ try {
     Report-Progress 2 1 ('' + $total + ' Treiber-Update(s) gefunden')
 } catch {
     Write-Host ('[FEHLER] Treibersuche fehlgeschlagen: ' + $_.Exception.Message)
+    Report-Progress 2 1 'Treibersuche mit Fehler beendet'
+} finally {
+    if ($null -ne $session) {
+        [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($session)
+    }
 }
 ";
-            var output = CreateOutputHandler(log, new StepProgress(progress, CheckWeights), CheckSteps);
+            var stepProgress = new StepProgress(progress, CheckWeights);
+            var output = CreateOutputHandler(log, stepProgress, CheckSteps);
             await _ps.RunScriptAsync(script, output, output, ct);
             log("--- TREIBERSUCHE ABGESCHLOSSEN ---");
         }
 
         public async Task InstallDriversAsync(Action<string> log, IProgress<ProgressInfo>? progress, CancellationToken ct)
         {
+            ArgumentNullException.ThrowIfNull(log);
+
             log("--- INSTALLIERE OFFIZIELLE TREIBER (PFLICHT + OPTIONAL) ---");
 
             // Download und Installation erfolgen PRO Treiber: So gibt es echten Fortschritt und
@@ -105,6 +121,7 @@ try {
 function Get-ResultText($code) {
     switch ($code) { 2 { 'Erfolgreich' } 3 { 'Erfolgreich mit Fehlern' } 4 { 'Fehlgeschlagen' } 5 { 'Abgebrochen' } default { 'Code ' + $code } }
 }
+$session = $null
 try {
 " + SearchScriptPrefix + @"
     $all = @($mandatory) + @($optional)
@@ -114,7 +131,7 @@ try {
     if ($all.Count -eq 0) {
         Write-Host 'Keine Treiber-Updates zur Installation gefunden.'
         Report-Progress 3 1 'Keine Treiber-Updates vorhanden'
-        exit
+        return
     }
 
     # ---- Download (einzeln, damit der Fortschritt sichtbar ist) ----
@@ -122,7 +139,7 @@ try {
     $downloader = $session.CreateUpdateDownloader()
     for ($i = 0; $i -lt $all.Count; $i++) {
         $u = $all[$i]
-        Report-Progress 2 ($i / $all.Count) ('Lade ' + ($i + 1) + ' von ' + $all.Count + ': ' + $u.Title)
+        Report-Progress 2 ([double]$i / $all.Count) ('Lade ' + ($i + 1) + ' von ' + $all.Count + ': ' + $u.Title)
         if (-not $u.EulaAccepted) { $u.AcceptEula() }
         if (-not $u.IsDownloaded) {
             $coll = New-Object -ComObject Microsoft.Update.UpdateColl
@@ -139,7 +156,8 @@ try {
     }
     if ($ready.Count -eq 0) {
         Write-Host 'Es konnte kein Treiber heruntergeladen werden.'
-        exit
+        Report-Progress 3 1 'Download fehlgeschlagen'
+        return
     }
 
     # ---- Installation (einzeln) ----
@@ -148,14 +166,15 @@ try {
     $rebootRequired = $false
     for ($i = 0; $i -lt $ready.Count; $i++) {
         $u = $ready[$i]
-        Report-Progress 3 ($i / $ready.Count) ('Installiere ' + ($i + 1) + ' von ' + $ready.Count + ': ' + $u.Title)
+        Report-Progress 3 ([double]$i / $ready.Count) ('Installiere ' + ($i + 1) + ' von ' + $ready.Count + ': ' + $u.Title)
         $coll = New-Object -ComObject Microsoft.Update.UpdateColl
         $coll.Add($u) | Out-Null
         $installer.Updates = $coll
         try {
             $r = $installer.Install()
-            $code = $r.GetUpdateResult(0).ResultCode
-            if ($r.RebootRequired) { $rebootRequired = $true }
+            $updateResult = $r.GetUpdateResult(0)
+            $code = $updateResult.ResultCode
+            if ($r.RebootRequired -or $updateResult.RebootRequired) { $rebootRequired = $true }
         } catch {
             $code = 4
         }
@@ -170,9 +189,15 @@ try {
     }
 } catch {
     Write-Host ('[FEHLER] Treiberinstallation fehlgeschlagen: ' + $_.Exception.Message)
+    Report-Progress 3 1 'Treiberinstallation mit Fehler beendet'
+} finally {
+    if ($null -ne $session) {
+        [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($session)
+    }
 }
 ";
-            var output = CreateOutputHandler(log, new StepProgress(progress, InstallWeights), InstallSteps);
+            var stepProgress = new StepProgress(progress, InstallWeights);
+            var output = CreateOutputHandler(log, stepProgress, InstallSteps);
             await _ps.RunScriptAsync(script, output, output, ct);
             log("--- TREIBERINSTALLATION ABGESCHLOSSEN ---");
         }
@@ -185,6 +210,12 @@ try {
             int currentStep = -1;
             return line =>
             {
+                if (string.IsNullOrEmpty(line))
+                {
+                    log(string.Empty);
+                    return;
+                }
+
                 if (!line.StartsWith(ProgressMarker, StringComparison.Ordinal))
                 {
                     log(line);
@@ -193,7 +224,7 @@ try {
 
                 string[] parts = line.Substring(ProgressMarker.Length).Split('|', 3);
                 if (parts.Length < 3 ||
-                    !int.TryParse(parts[0], out int step) ||
+                    !int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int step) ||
                     !double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out double fraction))
                     return;
 

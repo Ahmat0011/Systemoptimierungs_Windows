@@ -1,5 +1,4 @@
 using System;
-using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -12,40 +11,40 @@ namespace SystemOptimierer.Services
 
         public PowerShellService(ICommandExecutionService commandService)
         {
-            _commandService = commandService;
+            _commandService = commandService ?? throw new ArgumentNullException(nameof(commandService));
         }
 
         public async Task RunScriptAsync(string script, Action<string> onOutput, Action<string> onError, CancellationToken cancellationToken)
         {
-            string tempScriptPath = string.Empty;
+            if (string.IsNullOrWhiteSpace(script)) return;
+
             try
             {
-                tempScriptPath = Path.Combine(Path.GetTempPath(), $"script_{Guid.NewGuid()}.ps1");
-
-                // OPT 1: UTF-8 MIT BOM – Windows PowerShell 5.1 liest ohne BOM als ANSI (Umlaute-Kaputt)
-                // OPT 2: ProgressPreference voranstellen – macht PS-Skripte deutlich schneller
-                // OPT 4: Ausgabe als UTF-8 erzwingen – sonst OEM-Codepage (Zeichen wie ™ oder Emojis gehen verloren)
+                // In-Memory Scriptausführung via EncodedCommand:
+                // Keine temporären .ps1 Dateien im Temp-Verzeichnis (verhindert Heuristik-Alarme von Antivirus bei Skript-Droppern)
+                // und zuverlässige Ausführung ohne stdin-Piping-Verzögerungen oder EOF-Probleme.
                 string optimizedScript =
-                    "$ProgressPreference = 'SilentlyContinue'\n" +
-                    "try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }\n" +
-                    script;
-                await File.WriteAllTextAsync(tempScriptPath, optimizedScript, new UTF8Encoding(true), cancellationToken);
+                    "$ProgressPreference = 'SilentlyContinue'\r\n" +
+                    "try { " +
+                    "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; " +
+                    "[Console]::InputEncoding = [System.Text.Encoding]::UTF8; " +
+                    "$OutputEncoding = [System.Text.Encoding]::UTF8 " +
+                    "} catch { }\r\n" +
+                    script.Trim() + "\r\n";
 
-                // OPT 3: -NonInteractive verhindert, dass PS auf User-Eingabe wartet (unsichtbarer Hänger)
-                string arguments = $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{tempScriptPath}\"";
-                await _commandService.RunCommandAsync("powershell.exe", arguments, onOutput, onError, cancellationToken,
-                    new UTF8Encoding(false));
+                string base64 = Convert.ToBase64String(Encoding.Unicode.GetBytes(optimizedScript));
+                string arguments = $"-NoProfile -NoLogo -NonInteractive -ExecutionPolicy Bypass -EncodedCommand {base64}";
+
+                await _commandService.RunCommandAsync("powershell.exe", arguments, onOutput, onError, cancellationToken, Encoding.UTF8);
+            }
+            catch (OperationCanceledException)
+            {
+                // Ein Abbruch ist kein Fehler und soll nicht als "kritischer Fehler" im Log stehen.
+                onError?.Invoke("Vorgang wurde abgebrochen.");
             }
             catch (Exception ex)
             {
                 onError?.Invoke($"Kritischer Fehler beim Ausführen des PowerShell-Skripts: {ex.Message}");
-            }
-            finally
-            {
-                if (!string.IsNullOrEmpty(tempScriptPath) && File.Exists(tempScriptPath))
-                {
-                    try { File.Delete(tempScriptPath); } catch { }
-                }
             }
         }
     }

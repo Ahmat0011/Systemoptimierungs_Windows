@@ -8,8 +8,6 @@ namespace SystemOptimierer.Services
 
     /// <summary>
     /// Liest die Tabelle von "winget upgrade" zeilenweise anhand der Spaltenpositionen der Kopfzeile.
-    /// Ein Aufteilen an Leerzeichen ist unzuverlässig: Die längste Spalte wird nur durch EIN
-    /// Leerzeichen getrennt, Versionen können "&lt; 1.2" lauten und Namen Wörter wie "Version" enthalten.
     /// Pro winget-Aufruf eine eigene Instanz verwenden (zustandsbehaftet).
     /// </summary>
     public sealed class WingetUpgradeTableParser
@@ -37,7 +35,6 @@ namespace SystemOptimierer.Services
             var header = HeaderRegex.Match(trimmed);
             if (header.Success)
             {
-                // Positionen relativ zum Beginn der Namensspalte (eventuelle Spinner-Reste davor ignorieren)
                 int offset = header.Groups["name"].Index;
                 _idStart = header.Groups["id"].Index - offset;
                 _versionStart = header.Groups["version"].Index - offset;
@@ -71,7 +68,7 @@ namespace SystemOptimierer.Services
             }
 
             // Von winget abgeschnittene IDs ("Foo.Ba…") wären für "winget upgrade --id --exact" ungültig
-            if (id.EndsWith('…')) return false;
+            if (id.EndsWith('…') || id.EndsWith("...", StringComparison.Ordinal)) return false;
 
             entry = new WingetUpgradeEntry(name, id, current, available);
             return true;
@@ -79,7 +76,7 @@ namespace SystemOptimierer.Services
 
         private static string Column(string line, int start, int end)
         {
-            if (start >= line.Length) return string.Empty;
+            if (start < 0 || start >= line.Length) return string.Empty;
             int length = (end < 0 || end > line.Length ? line.Length : end) - start;
             return length <= 0 ? string.Empty : line.Substring(start, length).Trim();
         }
